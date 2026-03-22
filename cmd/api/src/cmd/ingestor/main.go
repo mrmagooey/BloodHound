@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net/url"
 	"os"
 	"os/signal"
 	"strings"
@@ -44,43 +45,95 @@ import (
 	"github.com/specterops/dawgs/util/size"
 )
 
+// Config holds settings that control ingest and analysis behaviour.
+type Config struct {
+	NoAnalysis  bool
+	ADCSEnabled bool
+	NTLMEnabled bool
+	Citrix      bool
+}
+
 func main() {
 	var (
-		filePath    string
-		neo4jURL    string
-		doAnalysis  bool
-		skipSchema  bool
-		adcsEnabled bool
-		ntlmEnabled bool
-		citrix      bool
+		filePath     string
+		neo4jURL     string
+		neo4jUser    string
+		neo4jPass    string
+		skipSchema   bool
+		serverMode   bool
+		cfg          Config
 	)
 
-	flag.StringVar(&filePath, "file", "", "Path to .zip or .json file to ingest (required)")
-	flag.StringVar(&neo4jURL, "neo4j", "neo4j://neo4j:bloodhound@localhost:7687", "Neo4j/Bolt-compatible connection URL")
-	flag.BoolVar(&doAnalysis, "no-analysis", false, "Skip post-processing analysis after ingestion")
+	flag.StringVar(&filePath, "file", "", "Path to .zip or .json file to ingest (CLI mode, required without --server)")
+	flag.StringVar(&neo4jURL, "neo4j", "neo4j://localhost:7687", "Neo4j/Bolt-compatible connection URL")
+	flag.StringVar(&neo4jUser, "neo4j-username", "neo4j", "Neo4j username")
+	flag.StringVar(&neo4jPass, "neo4j-password", "", "Neo4j password")
+	flag.BoolVar(&serverMode, "server", false, "Run as HTTP server (config via environment variables)")
+	flag.BoolVar(&cfg.NoAnalysis, "no-analysis", false, "Skip post-processing analysis after ingestion")
 	flag.BoolVar(&skipSchema, "skip-schema", false, "Skip schema assertion (use for Bolt-compatible databases that don't support Neo4j index syntax, e.g. Memgraph)")
-	flag.BoolVar(&adcsEnabled, "adcs", true, "Enable ADCS attack path analysis (requires --analysis)")
-	flag.BoolVar(&ntlmEnabled, "ntlm", true, "Enable NTLM relay path analysis (requires --analysis)")
-	flag.BoolVar(&citrix, "citrix", false, "Enable Citrix session analysis (requires --analysis)")
+	flag.BoolVar(&cfg.ADCSEnabled, "adcs", true, "Enable ADCS attack path analysis")
+	flag.BoolVar(&cfg.NTLMEnabled, "ntlm", true, "Enable NTLM relay path analysis")
+	flag.BoolVar(&cfg.Citrix, "citrix", false, "Enable Citrix session analysis")
 	flag.Parse()
 
 	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo})))
 
+	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer cancel()
+
+	if serverMode {
+		runServer(ctx)
+		return
+	}
+
+	// CLI mode
 	if filePath == "" {
-		slog.Error("--file is required")
+		slog.Error("--file is required in CLI mode")
 		flag.Usage()
 		os.Exit(1)
 	}
-
 	if _, err := os.Stat(filePath); err != nil {
 		slog.Error("File not found", "file", filePath, "error", err)
 		os.Exit(1)
 	}
 
-	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer cancel()
+	connURL, err := withCredentials(neo4jURL, neo4jUser, neo4jPass)
+	if err != nil {
+		slog.Error("Invalid Neo4j URL", "error", err)
+		os.Exit(1)
+	}
 
-	slog.Info("Connecting to Neo4j", "url", neo4jURL)
+	graphdb, ingestSchema := mustConnect(ctx, connURL, skipSchema)
+	defer graphdb.Close(ctx)
+
+	if err := run(ctx, graphdb, filePath, ingestSchema, cfg); err != nil {
+		slog.Error("Ingest failed", "error", err)
+		os.Exit(1)
+	}
+}
+
+// withCredentials returns a copy of rawURL with the username and password set.
+// If username is empty the URL is returned unchanged, preserving any credentials
+// already embedded in it.
+func withCredentials(rawURL, username, password string) (string, error) {
+	if username == "" {
+		return rawURL, nil
+	}
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return "", err
+	}
+	u.User = url.UserPassword(username, password)
+	return u.String(), nil
+}
+
+// mustConnect opens the graph database and asserts the schema, exiting on any error.
+func mustConnect(ctx context.Context, neo4jURL string, skipSchema bool) (graph.Database, upload.IngestSchema) {
+	// Log the URL with the password redacted.
+	if redacted, err := url.Parse(neo4jURL); err == nil {
+		redacted.User = url.User(redacted.User.Username())
+		slog.Info("Connecting to Neo4j", "url", redacted.String())
+	}
 	graphdb, err := dawgs.Open(ctx, neo4j.DriverName, dawgs.Config{
 		GraphQueryMemoryLimit: 2 * size.Gibibyte,
 		ConnectionString:      neo4jURL,
@@ -89,11 +142,11 @@ func main() {
 		slog.Error("Failed to connect to Neo4j", "error", err)
 		os.Exit(1)
 	}
-	defer graphdb.Close(ctx)
 
 	if !skipSchema {
 		slog.Info("Asserting graph schema")
 		if err := graphdb.AssertSchema(ctx, schema.DefaultGraphSchema()); err != nil {
+			graphdb.Close(ctx)
 			slog.Error("Failed to assert schema", "error", err)
 			os.Exit(1)
 		}
@@ -101,17 +154,16 @@ func main() {
 
 	ingestSchema, err := upload.LoadIngestSchema()
 	if err != nil {
+		graphdb.Close(ctx)
 		slog.Error("Failed to load ingest schema", "error", err)
 		os.Exit(1)
 	}
 
-	if err := run(ctx, graphdb, filePath, ingestSchema, !doAnalysis, adcsEnabled, ntlmEnabled, citrix, skipSchema); err != nil {
-		slog.Error("Ingest failed", "error", err)
-		os.Exit(1)
-	}
+	return graphdb, ingestSchema
 }
 
-func run(ctx context.Context, graphdb graph.Database, filePath string, ingestSchema upload.IngestSchema, doAnalysis, adcsEnabled, ntlmEnabled, citrix, skipSchema bool) error {
+// run ingests a single file and optionally runs post-processing analysis.
+func run(ctx context.Context, graphdb graph.Database, filePath string, ingestSchema upload.IngestSchema, cfg Config) error {
 	fileType := model.FileTypeJson
 	if strings.HasSuffix(strings.ToLower(filePath), ".zip") {
 		fileType = model.FileTypeZip
@@ -137,7 +189,7 @@ func run(ctx context.Context, graphdb graph.Database, filePath string, ingestSch
 		if fileType == model.FileTypeZip {
 			return ingestZip(ctx, ic, filePath, readOpts)
 		}
-		return ingestJSON(ctx, ic, filePath, readOpts)
+		return ingestJSON(ic, filePath, readOpts)
 	}); err != nil {
 		return fmt.Errorf("ingestion error: %w", err)
 	}
@@ -151,13 +203,13 @@ func run(ctx context.Context, graphdb graph.Database, filePath string, ingestSch
 		"relationships_written", relsWritten,
 	)
 
-	if doAnalysis {
-		return runAnalysis(ctx, graphdb, adcsEnabled, ntlmEnabled, citrix)
+	if !cfg.NoAnalysis {
+		return runAnalysis(ctx, graphdb, cfg.ADCSEnabled, cfg.NTLMEnabled, cfg.Citrix)
 	}
 	return nil
 }
 
-func ingestJSON(ctx context.Context, ic *graphify.IngestContext, path string, readOpts graphify.ReadOptions) error {
+func ingestJSON(ic *graphify.IngestContext, path string, readOpts graphify.ReadOptions) error {
 	file, err := os.Open(path)
 	if err != nil {
 		return fmt.Errorf("open file: %w", err)
