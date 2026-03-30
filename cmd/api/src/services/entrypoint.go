@@ -44,15 +44,26 @@ import (
 	"github.com/specterops/bloodhound/packages/go/cache"
 	schema "github.com/specterops/bloodhound/packages/go/graphschema"
 	"github.com/specterops/dawgs/graph"
+	"gorm.io/gorm"
 )
 
-// ConnectPostgres initializes a connection to PG, and returns errors if any
+// ConnectPostgres initializes a connection to PG or SQLite, and returns errors if any.
+// If cfg.SQLitePath is set, SQLite is used; otherwise PostgreSQL.
 func ConnectPostgres(cfg config.Configuration) (*database.BloodhoundDB, error) {
-	if db, err := database.OpenDatabase(cfg.Database.PostgreSQLConnectionString()); err != nil {
-		return nil, fmt.Errorf("error while attempting to create database connection: %w", err)
+	var (
+		db  *gorm.DB
+		err error
+	)
+	if cfg.SQLitePath != "" {
+		slog.Info("Using SQLite database", "path", cfg.SQLitePath)
+		db, err = database.OpenSQLiteDatabase(cfg.SQLitePath)
 	} else {
-		return database.NewBloodhoundDB(db, auth.NewIdentityResolver(), cfg), nil
+		db, err = database.OpenDatabase(cfg.Database.PostgreSQLConnectionString())
 	}
+	if err != nil {
+		return nil, fmt.Errorf("error while attempting to create database connection: %w", err)
+	}
+	return database.NewBloodhoundDB(db, auth.NewIdentityResolver(), cfg), nil
 }
 
 // ConnectDatabases initializes connections to PG and connection, and returns errors if any
@@ -91,13 +102,23 @@ func Entrypoint(ctx context.Context, cfg config.Configuration, connections boots
 		slog.String("namespace", "dogtags"),
 		slog.Any("flags", flags))
 
+	standaloneMode := cfg.SQLitePath != ""
+
 	if !cfg.DisableMigrations {
-		if err := bootstrap.MigrateDB(ctx, cfg, connections.RDMS, config.NewDefaultAdminConfiguration); err != nil {
-			return nil, fmt.Errorf("rdms migration error: %w", err)
-		} else if err := migrations.NewGraphMigrator(connections.Graph).Migrate(ctx); err != nil {
-			return nil, fmt.Errorf("graph migration error: %w", err)
-		} else if err := bootstrap.PopulateExtensionData(ctx, connections.RDMS); err != nil {
-			return nil, fmt.Errorf("extensions data population error: %w", err)
+		if standaloneMode {
+			// Standalone (SQLite) mode: just run the minimal schema migration; skip
+			// the full PostgreSQL migration + default admin setup.
+			if err := connections.RDMS.Migrate(ctx); err != nil {
+				return nil, fmt.Errorf("rdms migration error: %w", err)
+			}
+		} else {
+			if err := bootstrap.MigrateDB(ctx, cfg, connections.RDMS, config.NewDefaultAdminConfiguration); err != nil {
+				return nil, fmt.Errorf("rdms migration error: %w", err)
+			} else if err := migrations.NewGraphMigrator(connections.Graph).Migrate(ctx); err != nil {
+				return nil, fmt.Errorf("graph migration error: %w", err)
+			} else if err := bootstrap.PopulateExtensionData(ctx, connections.RDMS); err != nil {
+				return nil, fmt.Errorf("extensions data population error: %w", err)
+			}
 		}
 	} else if err := connections.Graph.SetDefaultGraph(ctx, schema.DefaultGraph()); err != nil {
 		return nil, fmt.Errorf("no default graph found but migrations are disabled per configuration: %w", err)
@@ -106,15 +127,15 @@ func Entrypoint(ctx context.Context, cfg config.Configuration, connections boots
 	}
 
 	// Allow recreating the default admin account to help with lockouts/loading database dumps
-	if cfg.RecreateDefaultAdmin {
+	if !standaloneMode && cfg.RecreateDefaultAdmin {
 		slog.InfoContext(ctx, "Recreating default admin user")
 		if err := bootstrap.CreateDefaultAdmin(ctx, cfg, connections.RDMS, config.NewDefaultAdminConfiguration); err != nil {
 			return nil, err
 		}
 	}
 
-	// Remove authentication tokens if the APITokens parameter is disabled
-	if !appcfg.GetAPITokensParameter(ctx, connections.RDMS) {
+	// Remove authentication tokens if the APITokens parameter is disabled (PostgreSQL mode only)
+	if !standaloneMode && !appcfg.GetAPITokensParameter(ctx, connections.RDMS) {
 		slog.WarnContext(ctx, "APITokens parameter is disabled")
 		if dErr := connections.RDMS.DeleteAllAuthTokens(ctx); dErr != nil {
 			return nil, fmt.Errorf("failed to delete all auth tokens at startup: %w", dErr)
@@ -146,14 +167,16 @@ func Entrypoint(ctx context.Context, cfg config.Configuration, connections boots
 		registration.RegisterFossGlobalMiddleware(&routerInst, cfg, auth.NewIdentityResolver(), authenticator, connections.RDMS)
 		registration.RegisterFossRoutes(&routerInst, cfg, connections.RDMS, connections.Graph, graphQuery, apiCache, collectorManifests, authenticator, authorizer, ingestSchema, dogtagsService, openGraphSchemaService)
 
-		// Set neo4j batch and flush sizes
-		neo4jParameters := appcfg.GetNeo4jParameters(ctx, connections.RDMS)
-		connections.Graph.SetBatchWriteSize(neo4jParameters.BatchWriteSize)
-		connections.Graph.SetWriteFlushSize(neo4jParameters.WriteFlushSize)
+		if !standaloneMode {
+			// Set neo4j batch and flush sizes from database parameters
+			neo4jParameters := appcfg.GetNeo4jParameters(ctx, connections.RDMS)
+			connections.Graph.SetBatchWriteSize(neo4jParameters.BatchWriteSize)
+			connections.Graph.SetWriteFlushSize(neo4jParameters.WriteFlushSize)
 
-		// Trigger analysis on first start
-		if err := connections.RDMS.RequestAnalysis(ctx, "init"); err != nil {
-			slog.WarnContext(ctx, fmt.Sprintf("failed to request init analysis: %v", err))
+			// Trigger analysis on first start
+			if err := connections.RDMS.RequestAnalysis(ctx, "init"); err != nil {
+				slog.WarnContext(ctx, fmt.Sprintf("failed to request init analysis: %v", err))
+			}
 		}
 
 		return []daemons.Daemon{

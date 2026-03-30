@@ -147,6 +147,8 @@ type Configuration struct {
 	LogPath                         string                    `json:"log_path"`
 	TLS                             TLSConfiguration          `json:"tls"`
 	GraphDriver                     string                    `json:"graph_driver"`
+	GraphPath                       string                    `json:"graph_path"`
+	SQLitePath                      string                    `json:"sqlite_path"`
 	Database                        DatabaseConfiguration     `json:"database"`
 	Neo4J                           DatabaseConfiguration     `json:"neo4j"`
 	Crypto                          CryptoConfiguration       `json:"crypto"`

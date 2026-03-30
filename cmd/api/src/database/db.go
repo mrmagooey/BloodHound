@@ -35,6 +35,7 @@ import (
 	"github.com/specterops/bloodhound/cmd/api/src/services/upload"
 	"github.com/specterops/bloodhound/packages/go/bhlog/attr"
 	"gorm.io/driver/postgres"
+	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
 
@@ -228,6 +229,14 @@ func (s *BloodhoundDB) Transaction(ctx context.Context, fn func(tx *BloodhoundDB
 }
 
 func OpenDatabase(connection string) (*gorm.DB, error) {
+	return OpenDatabaseDialect(connection, false)
+}
+
+func OpenSQLiteDatabase(path string) (*gorm.DB, error) {
+	return OpenDatabaseDialect(path, true)
+}
+
+func OpenDatabaseDialect(connection string, useSQLite bool) (*gorm.DB, error) {
 	gormConfig := &gorm.Config{
 		Logger: &GormLogAdapter{
 			SlowQueryErrorThreshold: time.Second * 30,
@@ -235,11 +244,22 @@ func OpenDatabase(connection string) (*gorm.DB, error) {
 		},
 	}
 
-	if db, err := gorm.Open(postgres.Open(connection), gormConfig); err != nil {
+	var dialector gorm.Dialector
+	if useSQLite {
+		dialector = sqlite.Open(connection)
+	} else {
+		dialector = postgres.Open(connection)
+	}
+
+	if db, err := gorm.Open(dialector, gormConfig); err != nil {
 		return nil, err
 	} else {
 		return db, nil
 	}
+}
+
+func (s *BloodhoundDB) isSQLite() bool {
+	return s.db.Name() == "sqlite"
 }
 
 func (s *BloodhoundDB) RawDelete(value any) error {
@@ -247,7 +267,24 @@ func (s *BloodhoundDB) RawDelete(value any) error {
 }
 
 func (s *BloodhoundDB) Wipe(ctx context.Context) error {
-	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	db := s.db.WithContext(ctx)
+
+	if s.isSQLite() {
+		return db.Transaction(func(tx *gorm.DB) error {
+			var tables []string
+			if result := tx.Raw("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").Scan(&tables); result.Error != nil {
+				return result.Error
+			}
+			for _, table := range tables {
+				if err := tx.Exec(fmt.Sprintf(`DROP TABLE IF EXISTS "%s"`, table)).Error; err != nil {
+					return err
+				}
+			}
+			return nil
+		})
+	}
+
+	return db.Transaction(func(tx *gorm.DB) error {
 		var tables []string
 
 		if result := tx.Raw("SELECT table_name FROM information_schema.tables WHERE table_schema = CURRENT_SCHEMA() AND NOT table_name ILIKE '%pg_stat%'").Scan(&tables); result.Error != nil {
@@ -267,8 +304,18 @@ func (s *BloodhoundDB) Wipe(ctx context.Context) error {
 }
 
 func (s *BloodhoundDB) Migrate(ctx context.Context) error {
+	db := s.db.WithContext(ctx)
+
+	if s.isSQLite() {
+		if err := migration.MigrateSQLite(db); err != nil {
+			slog.ErrorContext(ctx, "Error during SQLite AutoMigrate phase", attr.Error(err))
+			return err
+		}
+		return nil
+	}
+
 	// Run the migrator
-	if err := migration.NewMigrator(s.db.WithContext(ctx)).ExecuteStepwiseMigrations(); err != nil {
+	if err := migration.NewMigrator(db).ExecuteStepwiseMigrations(); err != nil {
 		slog.ErrorContext(ctx, "Error during SQL database migration phase", attr.Error(err))
 		return err
 	}
@@ -277,7 +324,14 @@ func (s *BloodhoundDB) Migrate(ctx context.Context) error {
 }
 
 func (s *BloodhoundDB) PopulateExtensionData(ctx context.Context) error {
-	if err := migration.NewMigrator(s.db.WithContext(ctx)).ExecuteExtensionDataPopulation(); err != nil {
+	db := s.db.WithContext(ctx)
+
+	if s.isSQLite() {
+		// Extension data SQL files contain PostgreSQL-specific syntax; skip for SQLite
+		return nil
+	}
+
+	if err := migration.NewMigrator(db).ExecuteExtensionDataPopulation(); err != nil {
 		slog.ErrorContext(ctx, "Error during extensions data population phase", attr.Error(err))
 		return err
 	}

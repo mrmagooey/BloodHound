@@ -18,6 +18,7 @@ package database
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -38,8 +39,11 @@ type AnalysisRequestData interface {
 }
 
 func (s *BloodhoundDB) DeleteAnalysisRequest(ctx context.Context) error {
-	tx := s.db.WithContext(ctx).Exec(`truncate analysis_request_switch;`)
-	return tx.Error
+	db := s.db.WithContext(ctx)
+	if s.isSQLite() {
+		return db.Exec(`DELETE FROM analysis_request_switch;`).Error
+	}
+	return db.Exec(`TRUNCATE analysis_request_switch;`).Error
 }
 
 func (s *BloodhoundDB) GetAnalysisRequest(ctx context.Context) (model.AnalysisRequest, error) {
@@ -79,48 +83,79 @@ func (s *BloodhoundDB) HasCollectedGraphDataDeletionRequest(ctx context.Context)
 // If an analysis request is present when a deletion request comes in, that overwrites the analysis to deletion but not vice-versa
 // To request: Use the helper methods `RequestAnalysis` and `RequestCollectedGraphDataDeletion`
 func (s *BloodhoundDB) setAnalysisRequest(ctx context.Context, request model.AnalysisRequest) error {
-	var (
-		now  = time.Now().UTC()
-		args = []any{
-			request.RequestedBy,
-			request.RequestType,
-			now,
-			request.DeleteAllGraph,
-			request.DeleteSourcelessGraph,
-			pq.StringArray(request.DeleteSourceKinds),
-		}
+	db := s.db.WithContext(ctx)
+	now := time.Now().UTC()
 
-		insertSQL = `
-		INSERT INTO analysis_request_switch (
-			requested_by,
-			request_type,
-			requested_at,
-			delete_all_graph,
-			delete_sourceless_graph,
-			delete_source_kinds
-		)
-		VALUES (?, ?, ?, ?, ?, ?::text[]);`
-		updateSQL = `UPDATE analysis_request_switch
-		SET
-			requested_by = ?,
-			request_type = ?,
-			requested_at = ?,
-			delete_all_graph = ?,
-			delete_sourceless_graph = ?,
-			delete_source_kinds = ?::text[];`
+	if s.isSQLite() {
+		return s.setAnalysisRequestSQLite(ctx, db, request, now)
+	}
+
+	args := []any{
+		request.RequestedBy,
+		request.RequestType,
+		now,
+		request.DeleteAllGraph,
+		request.DeleteSourcelessGraph,
+		pq.StringArray(request.DeleteSourceKinds),
+	}
+
+	insertSQL := `
+	INSERT INTO analysis_request_switch (
+		requested_by,
+		request_type,
+		requested_at,
+		delete_all_graph,
+		delete_sourceless_graph,
+		delete_source_kinds
 	)
+	VALUES (?, ?, ?, ?, ?, ?::text[]);`
+	updateSQL := `UPDATE analysis_request_switch
+	SET
+		requested_by = ?,
+		request_type = ?,
+		requested_at = ?,
+		delete_all_graph = ?,
+		delete_sourceless_graph = ?,
+		delete_source_kinds = ?::text[];`
+
 	if analysisRequest, err := s.GetAnalysisRequest(ctx); err != nil && !errors.Is(err, ErrNotFound) {
 		return err
 	} else if errors.Is(err, ErrNotFound) {
-		// No request exists — insert a new one with all relevant columns
-		return s.db.Exec(insertSQL, args...).Error
+		return db.Exec(insertSQL, args...).Error
 	} else {
-		// Analysis request existed, we only want to overwrite if request is for a deletion request, otherwise ignore additional requests
 		if analysisRequest.RequestType == model.AnalysisRequestAnalysis && request.RequestType == model.AnalysisRequestDeletion {
-			return s.db.Exec(updateSQL, args...).Error
+			return db.Exec(updateSQL, args...).Error
 		}
 		return nil
 	}
+}
+
+// setAnalysisRequestSQLite uses SQLite-compatible UPSERT (no PostgreSQL type casts).
+func (s *BloodhoundDB) setAnalysisRequestSQLite(ctx context.Context, db *gorm.DB, request model.AnalysisRequest, now time.Time) error {
+	kindsJSON, err := json.Marshal([]string(request.DeleteSourceKinds))
+	if err != nil {
+		return err
+	}
+
+	if analysisRequest, err := s.GetAnalysisRequest(ctx); err != nil && !errors.Is(err, ErrNotFound) {
+		return err
+	} else if errors.Is(err, ErrNotFound) {
+		return db.Exec(`
+			INSERT INTO analysis_request_switch
+				(singleton, requested_by, request_type, requested_at, delete_all_graph, delete_sourceless_graph, delete_source_kinds)
+			VALUES (1, ?, ?, ?, ?, ?, ?)`,
+			request.RequestedBy, request.RequestType, now,
+			request.DeleteAllGraph, request.DeleteSourcelessGraph, string(kindsJSON),
+		).Error
+	} else if analysisRequest.RequestType == model.AnalysisRequestAnalysis && request.RequestType == model.AnalysisRequestDeletion {
+		return db.Exec(`
+			UPDATE analysis_request_switch
+			SET requested_by=?, request_type=?, requested_at=?, delete_all_graph=?, delete_sourceless_graph=?, delete_source_kinds=?`,
+			request.RequestedBy, request.RequestType, now,
+			request.DeleteAllGraph, request.DeleteSourcelessGraph, string(kindsJSON),
+		).Error
+	}
+	return nil
 }
 
 // RequestAnalysis will request an analysis be executed, as long as there isn't an existing analysis request or collected graph data deletion request, then it no-ops

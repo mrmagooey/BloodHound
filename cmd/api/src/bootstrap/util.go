@@ -25,6 +25,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/specterops/bloodhound/cmd/api/src/api/tools"
 	"github.com/specterops/bloodhound/cmd/api/src/config"
+	kglitedawgs "github.com/specterops/bloodhound/packages/go/kglite/dawgs"
 	"github.com/specterops/dawgs"
 	"github.com/specterops/dawgs/drivers/neo4j"
 	"github.com/specterops/dawgs/drivers/pg"
@@ -77,12 +78,24 @@ func DefaultConfigFilePath() string {
 	return "/etc/bhapi/bhapi.json"
 }
 
+const kgliteDriverName = "kglite"
+
 func ConnectGraph(ctx context.Context, cfg config.Configuration) (*graph.DatabaseSwitch, error) {
 	var (
 		connectionString string
 		pool             *pgxpool.Pool
 		err              error
 	)
+
+	// Check for kglite driver first (explicit config or auto-detect)
+	if cfg.GraphDriver == kgliteDriverName || (cfg.GraphDriver == "" && cfg.GraphPath != "") {
+		slog.InfoContext(ctx, "Connecting to graph using kglite", "path", cfg.GraphPath)
+		driver, err := kglitedawgs.Open(cfg.GraphPath)
+		if err != nil {
+			return nil, fmt.Errorf("kglite: %w", err)
+		}
+		return graph.NewDatabaseSwitch(ctx, driver), nil
+	}
 
 	driverName, err := tools.LookupGraphDriver(ctx, cfg)
 	if err != nil {

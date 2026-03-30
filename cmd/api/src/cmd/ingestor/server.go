@@ -41,16 +41,13 @@ const (
 
 // serverEnv holds configuration read from environment variables for server mode.
 type serverEnv struct {
-	Neo4jURL      string
-	Neo4jUsername string
-	Neo4jPassword string
-	APIToken      string
-	Port          string
-	SkipSchema    bool
-	Config        Config
+	GraphPath string
+	APIToken  string
+	Port      string
+	Config    Config
 }
 
-// runServer reads environment variables, connects to the graph database, and
+// runServer reads environment variables, opens the graph database, and
 // starts the HTTP server with a background ingest queue.
 func runServer(ctx context.Context) {
 	env := readServerEnv()
@@ -60,13 +57,7 @@ func runServer(ctx context.Context) {
 		os.Exit(1)
 	}
 
-	connURL, err := withCredentials(env.Neo4jURL, env.Neo4jUsername, env.Neo4jPassword)
-	if err != nil {
-		slog.Error("Invalid INGESTOR_NEO4J_URL", "error", err)
-		os.Exit(1)
-	}
-
-	graphdb, ingestSchema := mustConnect(ctx, connURL, env.SkipSchema)
+	graphdb, ingestSchema := mustOpen(ctx, env.GraphPath)
 	defer graphdb.Close(ctx)
 
 	srv := newServer(graphdb, ingestSchema, env.APIToken, env.Config)
@@ -79,12 +70,9 @@ func runServer(ctx context.Context) {
 // readServerEnv reads all server configuration from environment variables.
 func readServerEnv() serverEnv {
 	return serverEnv{
-		Neo4jURL:      envString("INGESTOR_NEO4J_URL", "neo4j://localhost:7687"),
-		Neo4jUsername: envString("INGESTOR_NEO4J_USERNAME", "neo4j"),
-		Neo4jPassword: envString("INGESTOR_NEO4J_PASSWORD", ""),
-		APIToken:      envString("INGESTOR_API_TOKEN", ""),
-		Port:          envString("INGESTOR_PORT", "8080"),
-		SkipSchema:    envBool("INGESTOR_SKIP_SCHEMA", false),
+		GraphPath: envString("INGESTOR_GRAPH_PATH", "bloodhound.kgl"),
+		APIToken:  envString("INGESTOR_API_TOKEN", ""),
+		Port:      envString("INGESTOR_PORT", "8080"),
 		Config: Config{
 			NoAnalysis:  envBool("INGESTOR_NO_ANALYSIS", false),
 			ADCSEnabled: envBool("INGESTOR_ADCS", true),

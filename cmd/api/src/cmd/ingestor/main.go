@@ -23,7 +23,6 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"net/url"
 	"os"
 	"os/signal"
 	"strings"
@@ -38,11 +37,8 @@ import (
 	"github.com/specterops/bloodhound/cmd/api/src/services/upload"
 	"github.com/specterops/bloodhound/packages/go/analysis"
 	"github.com/specterops/bloodhound/packages/go/bomenc"
-	schema "github.com/specterops/bloodhound/packages/go/graphschema"
-	"github.com/specterops/dawgs"
-	"github.com/specterops/dawgs/drivers/neo4j"
+	kglitedawgs "github.com/specterops/bloodhound/packages/go/kglite/dawgs"
 	"github.com/specterops/dawgs/graph"
-	"github.com/specterops/dawgs/util/size"
 )
 
 // Config holds settings that control ingest and analysis behaviour.
@@ -55,22 +51,16 @@ type Config struct {
 
 func main() {
 	var (
-		filePath     string
-		neo4jURL     string
-		neo4jUser    string
-		neo4jPass    string
-		skipSchema   bool
-		serverMode   bool
-		cfg          Config
+		filePath   string
+		graphPath  string
+		serverMode bool
+		cfg        Config
 	)
 
 	flag.StringVar(&filePath, "file", "", "Path to .zip or .json file to ingest (CLI mode, required without --server)")
-	flag.StringVar(&neo4jURL, "neo4j", "neo4j://localhost:7687", "Neo4j/Bolt-compatible connection URL")
-	flag.StringVar(&neo4jUser, "neo4j-username", "neo4j", "Neo4j username")
-	flag.StringVar(&neo4jPass, "neo4j-password", "", "Neo4j password")
+	flag.StringVar(&graphPath, "graph-path", "bloodhound.kgl", "Path to kglite graph database file")
 	flag.BoolVar(&serverMode, "server", false, "Run as HTTP server (config via environment variables)")
 	flag.BoolVar(&cfg.NoAnalysis, "no-analysis", false, "Skip post-processing analysis after ingestion")
-	flag.BoolVar(&skipSchema, "skip-schema", false, "Skip schema assertion (use for Bolt-compatible databases that don't support Neo4j index syntax, e.g. Memgraph)")
 	flag.BoolVar(&cfg.ADCSEnabled, "adcs", true, "Enable ADCS attack path analysis")
 	flag.BoolVar(&cfg.NTLMEnabled, "ntlm", true, "Enable NTLM relay path analysis")
 	flag.BoolVar(&cfg.Citrix, "citrix", false, "Enable Citrix session analysis")
@@ -97,13 +87,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	connURL, err := withCredentials(neo4jURL, neo4jUser, neo4jPass)
-	if err != nil {
-		slog.Error("Invalid Neo4j URL", "error", err)
-		os.Exit(1)
-	}
-
-	graphdb, ingestSchema := mustConnect(ctx, connURL, skipSchema)
+	graphdb, ingestSchema := mustOpen(ctx, graphPath)
 	defer graphdb.Close(ctx)
 
 	if err := run(ctx, graphdb, filePath, ingestSchema, cfg); err != nil {
@@ -112,54 +96,24 @@ func main() {
 	}
 }
 
-// withCredentials returns a copy of rawURL with the username and password set.
-// If username is empty the URL is returned unchanged, preserving any credentials
-// already embedded in it.
-func withCredentials(rawURL, username, password string) (string, error) {
-	if username == "" {
-		return rawURL, nil
-	}
-	u, err := url.Parse(rawURL)
-	if err != nil {
-		return "", err
-	}
-	u.User = url.UserPassword(username, password)
-	return u.String(), nil
-}
+// mustOpen opens or creates a kglite graph database, exiting on any error.
+func mustOpen(ctx context.Context, graphPath string) (graph.Database, upload.IngestSchema) {
+	slog.Info("Opening kglite graph database", "path", graphPath)
 
-// mustConnect opens the graph database and asserts the schema, exiting on any error.
-func mustConnect(ctx context.Context, neo4jURL string, skipSchema bool) (graph.Database, upload.IngestSchema) {
-	// Log the URL with the password redacted.
-	if redacted, err := url.Parse(neo4jURL); err == nil {
-		redacted.User = url.User(redacted.User.Username())
-		slog.Info("Connecting to Neo4j", "url", redacted.String())
-	}
-	graphdb, err := dawgs.Open(ctx, neo4j.DriverName, dawgs.Config{
-		GraphQueryMemoryLimit: 2 * size.Gibibyte,
-		ConnectionString:      neo4jURL,
-	})
+	driver, err := kglitedawgs.Open(graphPath)
 	if err != nil {
-		slog.Error("Failed to connect to Neo4j", "error", err)
+		slog.Error("Failed to open kglite graph", "error", err)
 		os.Exit(1)
-	}
-
-	if !skipSchema {
-		slog.Info("Asserting graph schema")
-		if err := graphdb.AssertSchema(ctx, schema.DefaultGraphSchema()); err != nil {
-			graphdb.Close(ctx)
-			slog.Error("Failed to assert schema", "error", err)
-			os.Exit(1)
-		}
 	}
 
 	ingestSchema, err := upload.LoadIngestSchema()
 	if err != nil {
-		graphdb.Close(ctx)
+		driver.Close(ctx)
 		slog.Error("Failed to load ingest schema", "error", err)
 		os.Exit(1)
 	}
 
-	return graphdb, ingestSchema
+	return driver, ingestSchema
 }
 
 // run ingests a single file and optionally runs post-processing analysis.

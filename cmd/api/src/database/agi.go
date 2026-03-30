@@ -279,10 +279,6 @@ func (s *BloodhoundDB) UpdateAssetGroupSelectors(ctx context.Context, assetGroup
 }
 
 func (s *BloodhoundDB) CreateAssetGroupCollection(ctx context.Context, collection model.AssetGroupCollection, entries model.AssetGroupCollectionEntries) error {
-	const CreateAssetGroupCollectionQuery = `INSERT INTO "asset_group_collection_entries"
-    ("asset_group_collection_id","object_id","node_label","properties","created_at","updated_at")
-	(SELECT * FROM unnest($1::bigint[], $2::text[], $3::text[], $4::jsonb[], $5::timestamp[], $5::timestamp[]));`
-
 	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var newCollection = collection
 
@@ -290,28 +286,42 @@ func (s *BloodhoundDB) CreateAssetGroupCollection(ctx context.Context, collectio
 			return CheckError(result)
 		}
 
-		// GORM will fail on an attempt to insert a nil slice, so we have to guard against empty entry arrays here
-		if len(entries) > 0 {
-			var (
-				agIds      = make([]int64, len(entries))
-				objectIds  = make([]string, len(entries))
-				labels     = make([]string, len(entries))
-				properties = make([]types.JSONUntypedObject, len(entries))
-				timestamps = make([]time.Time, len(entries))
-				now        = time.Now()
-			)
-
-			for idx := range entries {
-				agIds[idx] = newCollection.ID
-				objectIds[idx] = entries[idx].ObjectID
-				labels[idx] = entries[idx].NodeLabel
-				properties[idx] = entries[idx].Properties
-				timestamps[idx] = now
-			}
-
-			return CheckError(tx.Exec(CreateAssetGroupCollectionQuery, agIds, objectIds, labels, properties, timestamps))
+		if len(entries) == 0 {
+			return nil
 		}
 
-		return nil
+		if s.isSQLite() {
+			// SQLite: insert rows one by one (no unnest support)
+			now := time.Now()
+			for idx := range entries {
+				entries[idx].AssetGroupCollectionID = newCollection.ID
+				entries[idx].CreatedAt = now
+				entries[idx].UpdatedAt = now
+			}
+			return CheckError(tx.CreateInBatches(entries, 500))
+		}
+
+		const CreateAssetGroupCollectionQuery = `INSERT INTO "asset_group_collection_entries"
+    ("asset_group_collection_id","object_id","node_label","properties","created_at","updated_at")
+	(SELECT * FROM unnest($1::bigint[], $2::text[], $3::text[], $4::jsonb[], $5::timestamp[], $5::timestamp[]));`
+
+		var (
+			agIds      = make([]int64, len(entries))
+			objectIds  = make([]string, len(entries))
+			labels     = make([]string, len(entries))
+			properties = make([]types.JSONUntypedObject, len(entries))
+			timestamps = make([]time.Time, len(entries))
+			now        = time.Now()
+		)
+
+		for idx := range entries {
+			agIds[idx] = newCollection.ID
+			objectIds[idx] = entries[idx].ObjectID
+			labels[idx] = entries[idx].NodeLabel
+			properties[idx] = entries[idx].Properties
+			timestamps[idx] = now
+		}
+
+		return CheckError(tx.Exec(CreateAssetGroupCollectionQuery, agIds, objectIds, labels, properties, timestamps))
 	})
 }
