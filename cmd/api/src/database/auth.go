@@ -452,7 +452,12 @@ func (s *BloodhoundDB) DeleteAllAuthTokens(ctx context.Context) error {
 	}
 
 	err := s.AuditableTransaction(ctx, auditEntry, func(tx *gorm.DB) error {
-		result := tx.WithContext(ctx).Exec("TRUNCATE TABLE auth_tokens")
+		var result *gorm.DB
+		if s.isSQLite() {
+			result = tx.WithContext(ctx).Exec("DELETE FROM auth_tokens")
+		} else {
+			result = tx.WithContext(ctx).Exec("TRUNCATE TABLE auth_tokens")
+		}
 		return CheckError(result)
 	})
 	if err == nil {

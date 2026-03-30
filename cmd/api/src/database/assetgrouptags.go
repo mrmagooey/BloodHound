@@ -876,8 +876,8 @@ func (s *BloodhoundDB) GetAggregatedSelectorNodesCertification(ctx context.Conte
 			JOIN %s t ON s.asset_group_tag_id = t.id
 			WHERE t.type = %d
 		),
-		sort_on_created_at AS (
-			SELECT DISTINCT ON (sort.node_id)
+		ranked_nodes AS (
+			SELECT
 				sort.node_id,
 				sort.selector_id,
 				sort.certified,
@@ -889,11 +889,17 @@ func (s *BloodhoundDB) GetAggregatedSelectorNodesCertification(ctx context.Conte
 				sort.node_name,
 				sort.position,
 				sort.updated_at,
-				MIN(sort.created_at) OVER (PARTITION BY sort.node_id) AS created_at,    -- make a column that tracks the earliest created_at for a given node_id
-				sort.asset_group_tag_id
+				MIN(sort.created_at) OVER (PARTITION BY sort.node_id) AS created_at,
+				sort.asset_group_tag_id,
+				ROW_NUMBER() OVER (PARTITION BY sort.node_id ORDER BY sort.certified DESC) AS rn
 			FROM nodes_associated_with_min_pos sort
 			WHERE sort.position = sort.min_position_for_node AND sort.require_certify = true
-			ORDER BY sort.node_id, sort.certified DESC     -- when there are multiple rows of same node_id, take the one with the highest value of certified
+		),
+		sort_on_created_at AS (
+			SELECT node_id, selector_id, certified, certified_by, source, node_primary_kind,
+				node_environment_id, node_object_id, node_name, position, updated_at, created_at, asset_group_tag_id
+			FROM ranked_nodes
+			WHERE rn = 1
 		)`,
 		model.AssetGroupSelectorNode{}.TableName(),
 		model.AssetGroupTagSelector{}.TableName(),

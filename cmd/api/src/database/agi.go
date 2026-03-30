@@ -154,7 +154,8 @@ func (s *BloodhoundDB) GetAllAssetGroups(ctx context.Context, order string, filt
 }
 
 func (s *BloodhoundDB) SweepAssetGroupCollections(ctx context.Context) {
-	s.db.WithContext(ctx).Where("created_at < now() - INTERVAL '30 DAYS'").Delete(&model.AssetGroupCollection{})
+	cutoff := time.Now().AddDate(0, 0, -30)
+	s.db.WithContext(ctx).Where("created_at < ?", cutoff).Delete(&model.AssetGroupCollection{})
 }
 
 func (s *BloodhoundDB) GetAssetGroupCollections(ctx context.Context, assetGroupID int32, order string, filter model.SQLFilter) (model.AssetGroupCollections, error) {
