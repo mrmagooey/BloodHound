@@ -96,7 +96,7 @@ func (s *BloodhoundDB) setAnalysisRequest(ctx context.Context, request model.Ana
 		now,
 		request.DeleteAllGraph,
 		request.DeleteSourcelessGraph,
-		pq.StringArray(request.DeleteSourceKinds),
+		pq.StringArray([]string(request.DeleteSourceKinds)),
 	}
 
 	insertSQL := `
@@ -132,7 +132,7 @@ func (s *BloodhoundDB) setAnalysisRequest(ctx context.Context, request model.Ana
 
 // setAnalysisRequestSQLite uses SQLite-compatible UPSERT (no PostgreSQL type casts).
 func (s *BloodhoundDB) setAnalysisRequestSQLite(ctx context.Context, db *gorm.DB, request model.AnalysisRequest, now time.Time) error {
-	kindsJSON, err := json.Marshal([]string(request.DeleteSourceKinds))
+	kindsJSON, err := json.Marshal(request.DeleteSourceKinds)
 	if err != nil {
 		return err
 	}

@@ -19,10 +19,12 @@ package database
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/lib/pq"
 	"github.com/specterops/bloodhound/cmd/api/src/utils"
 	"github.com/specterops/dawgs/graph"
+	"gorm.io/gorm"
 )
 
 type SourceKindsData interface {
@@ -220,20 +222,39 @@ func (s *BloodhoundDB) DeactivateSourceKindsByName(ctx context.Context, kinds gr
 		return nil
 	}
 
-	// Convert to []string for the SQL query
 	names := kinds.Strings()
 
-	// Source Kinds Base & AZBase are excluded from being deactivated.
-	const query = `
-		UPDATE source_kinds AS sk
-		SET active = false
-		FROM kind k
-		WHERE sk.kind_id = k.id
-		AND k.name = ANY (?)
-		AND k.name NOT IN ('Base', 'AZBase');
-	`
+	var result *gorm.DB
+	if s.isSQLite() {
+		// SQLite: use IN with expanded placeholders
+		placeholders := strings.Repeat("?,", len(names))
+		placeholders = placeholders[:len(placeholders)-1] // trim trailing comma
+		query := fmt.Sprintf(`
+			UPDATE source_kinds
+			SET active = false
+			WHERE kind_id IN (
+				SELECT id FROM kind
+				WHERE name IN (%s)
+				AND name NOT IN ('Base', 'AZBase')
+			)`, placeholders)
+		args := make([]interface{}, len(names))
+		for i, n := range names {
+			args[i] = n
+		}
+		result = s.db.WithContext(ctx).Exec(query, args...)
+	} else {
+		// PostgreSQL: use ANY with pq.Array
+		const query = `
+			UPDATE source_kinds AS sk
+			SET active = false
+			FROM kind k
+			WHERE sk.kind_id = k.id
+			AND k.name = ANY (?)
+			AND k.name NOT IN ('Base', 'AZBase');
+		`
+		result = s.db.WithContext(ctx).Exec(query, pq.Array(names))
+	}
 
-	result := s.db.WithContext(ctx).Exec(query, pq.Array(names))
 	if err := result.Error; err != nil {
 		return fmt.Errorf("failed to deactivate source kinds by name: %w", err)
 	}

@@ -31,7 +31,6 @@ import (
 
 	"github.com/gofrs/uuid"
 	"github.com/gorilla/mux"
-	"github.com/lib/pq"
 	"github.com/specterops/bloodhound/cmd/api/src/api"
 	"github.com/specterops/bloodhound/cmd/api/src/auth"
 	"github.com/specterops/bloodhound/cmd/api/src/ctx"
@@ -1306,7 +1305,7 @@ func (s *Resources) SearchAssetGroupTags(response http.ResponseWriter, request *
 				),
 				query.KindIn(query.Node(), kinds...),
 			)
-			selectorFilter = model.SQLFilter{SQLString: "name ILIKE ? AND asset_group_tag_id IN ?", Params: []any{"%" + reqBody.Query + "%", tagIds}}
+			selectorFilter = model.SQLFilter{SQLString: "LOWER(name) LIKE LOWER(?) AND asset_group_tag_id IN ?", Params: []any{"%" + reqBody.Query + "%", tagIds}}
 		)
 
 		if selectors, err = s.DB.GetAssetGroupTagSelectors(request.Context(), selectorFilter, AssetGroupTagDefaultLimit); err != nil && !errors.Is(err, database.ErrNotFound) {
@@ -1382,21 +1381,26 @@ func (s *Resources) assetGroupTagHistoryImplementation(response http.ResponseWri
 		}
 
 		if query != "" {
-			var (
-				queryableColumns  = []string{"actor", "email", "action", "target"}
-				querySQL          = fmt.Sprintf("(%s ILIKE ANY(?))", strings.Join(queryableColumns, " ILIKE ANY(?) OR "))
-				fuzzyQueryPattern = "%" + query + "%"
-				fuzzyQueryParams  = pq.StringArray{fuzzyQueryPattern, strings.ReplaceAll(fuzzyQueryPattern, " ", "")}
-			)
+			queryableColumns := []string{"actor", "email", "action", "target"}
+			fuzzyQueryPattern := "%" + query + "%"
+			fuzzyPatterns := []string{fuzzyQueryPattern, strings.ReplaceAll(fuzzyQueryPattern, " ", "")}
+
+			// Build (LOWER(col1) LIKE LOWER(?) OR LOWER(col1) LIKE LOWER(?) OR LOWER(col2) LIKE LOWER(?) ...)
+			// which is dialect-agnostic (works in both PostgreSQL and SQLite).
+			var parts []string
+			for _, col := range queryableColumns {
+				for _, pat := range fuzzyPatterns {
+					parts = append(parts, fmt.Sprintf("LOWER(%s) LIKE LOWER(?)", col))
+					sqlFilter.Params = append(sqlFilter.Params, pat)
+				}
+			}
+			querySQL := "(" + strings.Join(parts, " OR ") + ")"
 
 			if sqlFilter.SQLString != "" {
 				querySQL = " AND " + querySQL
 			}
 
 			sqlFilter.SQLString += querySQL
-			for range len(queryableColumns) {
-				sqlFilter.Params = append(sqlFilter.Params, fuzzyQueryParams)
-			}
 		}
 
 		if historyRecs, count, err := s.DB.GetAssetGroupHistoryRecords(rCtx, sqlFilter, sort, skip, limit); err != nil && !errors.Is(err, database.ErrNotFound) {

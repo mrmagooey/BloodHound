@@ -933,11 +933,19 @@ func (s *BloodhoundDB) GetSchemaFindings(ctx context.Context, filters model.Filt
 		}
 	}
 
+	// Use GROUP_CONCAT for SQLite, ARRAY_REMOVE(ARRAY_AGG(...)) for PostgreSQL
+	var subtypesExpr string
+	if s.isSQLite() {
+		subtypesExpr = "GROUP_CONCAT(sfs.subtype, ',')"
+	} else {
+		subtypesExpr = "ARRAY_REMOVE(ARRAY_AGG(sfs.subtype), NULL)"
+	}
+
 	sqlStr := fmt.Sprintf(`
 		SELECT sf.id, sf.type, sf.schema_extension_id, sf.kind_id, environment_id, sf.name, sf.display_name, sf.created_at,
 		       se.id, se.name, se.display_name, se.version, se.is_builtin, se.namespace, se.created_at,
 		       k.name,
-		       ARRAY_REMOVE(ARRAY_AGG(sfs.subtype), NULL)
+		       %s
 		FROM %s sf
 		JOIN %s se ON sf.schema_extension_id = se.id
 		JOIN %s k ON sf.kind_id = k.id
@@ -945,7 +953,7 @@ func (s *BloodhoundDB) GetSchemaFindings(ctx context.Context, filters model.Filt
 	    %s
 	    GROUP BY sf.id, se.id, k.name
 		ORDER BY sf.name
-	    `, model.SchemaFinding{}.TableName(), model.GraphSchemaExtension{}.TableName(), model.Kind{}.TableName(), model.SchemaFindingsSubtype{}.TableName(), whereClause)
+	    `, subtypesExpr, model.SchemaFinding{}.TableName(), model.GraphSchemaExtension{}.TableName(), model.Kind{}.TableName(), model.SchemaFindingsSubtype{}.TableName(), whereClause)
 
 	if rows, err := s.db.WithContext(ctx).Raw(sqlStr).Rows(); err != nil {
 		return nil, err
@@ -954,20 +962,32 @@ func (s *BloodhoundDB) GetSchemaFindings(ctx context.Context, filters model.Filt
 
 		for rows.Next() {
 			var (
-				finding  model.SchemaFinding
-				kindName string
-				subtypes pq.StringArray
+				finding       model.SchemaFinding
+				kindName      string
+				subtypesRaw   *string
 			)
 			if err := rows.Scan(
 				&finding.ID, &finding.Type, &finding.SchemaExtensionId, &finding.KindId, &finding.EnvironmentId, &finding.Name, &finding.DisplayName, &finding.CreatedAt,
 				&finding.Extension.ID, &finding.Extension.Name, &finding.Extension.DisplayName, &finding.Extension.Version, &finding.Extension.IsBuiltin, &finding.Extension.Namespace, &finding.Extension.CreatedAt,
 				&kindName,
-				&subtypes,
+				&subtypesRaw,
 			); err != nil {
 				return nil, err
 			} else {
 				finding.Kind = graph.StringKind(kindName)
-				finding.Subtypes = subtypes
+				if subtypesRaw != nil && *subtypesRaw != "" {
+					if s.isSQLite() {
+						// GROUP_CONCAT returns comma-separated string
+						finding.Subtypes = strings.Split(*subtypesRaw, ",")
+					} else {
+						// PostgreSQL ARRAY_AGG returns {a,b,c} format
+						var parsed pq.StringArray
+						if err := parsed.Scan([]byte(*subtypesRaw)); err != nil {
+							return nil, fmt.Errorf("parse subtypes for finding %d: %w", finding.ID, err)
+						}
+						finding.Subtypes = []string(parsed)
+					}
+				}
 				findings = append(findings, finding)
 			}
 		}
@@ -1035,10 +1055,10 @@ func (s *BloodhoundDB) CreateRemediation(ctx context.Context, findingId int32, s
 		)
 		SELECT
 			finding_id,
-			MAX(content) FILTER (WHERE content_type = 'short_description') as short_description,
-			MAX(content) FILTER (WHERE content_type = 'long_description') as long_description,
-			MAX(content) FILTER (WHERE content_type = 'short_remediation') as short_remediation,
-			MAX(content) FILTER (WHERE content_type = 'long_remediation') as long_remediation
+			MAX(CASE WHEN content_type = 'short_description' THEN content END) as short_description,
+			MAX(CASE WHEN content_type = 'long_description' THEN content END) as long_description,
+			MAX(CASE WHEN content_type = 'short_remediation' THEN content END) as short_remediation,
+			MAX(CASE WHEN content_type = 'long_remediation' THEN content END) as long_remediation
 		FROM inserted
 		GROUP BY finding_id`,
 		findingId, shortDescription,
@@ -1057,10 +1077,10 @@ func (s *BloodhoundDB) GetRemediationByFindingId(ctx context.Context, findingId 
 	if result := s.db.WithContext(ctx).Raw(fmt.Sprintf(`
 		SELECT
 			finding_id,
-			MAX(content) FILTER (WHERE content_type = 'short_description') as short_description,
-			MAX(content) FILTER (WHERE content_type = 'long_description') as long_description,
-			MAX(content) FILTER (WHERE content_type = 'short_remediation') as short_remediation,
-			MAX(content) FILTER (WHERE content_type = 'long_remediation') as long_remediation
+			MAX(CASE WHEN content_type = 'short_description' THEN content END) as short_description,
+			MAX(CASE WHEN content_type = 'long_description' THEN content END) as long_description,
+			MAX(CASE WHEN content_type = 'short_remediation' THEN content END) as short_remediation,
+			MAX(CASE WHEN content_type = 'long_remediation' THEN content END) as long_remediation
 		FROM %s
 		WHERE finding_id = ?
 		GROUP BY finding_id`, remediation.TableName()),
@@ -1080,10 +1100,10 @@ func (s *BloodhoundDB) GetRemediationByFindingName(ctx context.Context, findingN
 		SELECT
 			sr.finding_id,
 			srf.display_name,
-			MAX(sr.content) FILTER (WHERE sr.content_type = 'short_description') as short_description,
-			MAX(sr.content) FILTER (WHERE sr.content_type = 'long_description') as long_description,
-			MAX(sr.content) FILTER (WHERE sr.content_type = 'short_remediation') as short_remediation,
-			MAX(sr.content) FILTER (WHERE sr.content_type = 'long_remediation') as long_remediation
+			MAX(CASE WHEN sr.content_type = 'short_description' THEN sr.content END) as short_description,
+			MAX(CASE WHEN sr.content_type = 'long_description' THEN sr.content END) as long_description,
+			MAX(CASE WHEN sr.content_type = 'short_remediation' THEN sr.content END) as short_remediation,
+			MAX(CASE WHEN sr.content_type = 'long_remediation' THEN sr.content END) as long_remediation
 		FROM %s sr
 		JOIN %s srf ON sr.finding_id = srf.id
 		WHERE srf.name = ?
@@ -1113,10 +1133,10 @@ func (s *BloodhoundDB) UpdateRemediation(ctx context.Context, findingId int32, s
 		)
 		SELECT
 			finding_id,
-			MAX(content) FILTER (WHERE content_type = 'short_description') as short_description,
-			MAX(content) FILTER (WHERE content_type = 'long_description') as long_description,
-			MAX(content) FILTER (WHERE content_type = 'short_remediation') as short_remediation,
-			MAX(content) FILTER (WHERE content_type = 'long_remediation') as long_remediation
+			MAX(CASE WHEN content_type = 'short_description' THEN content END) as short_description,
+			MAX(CASE WHEN content_type = 'long_description' THEN content END) as long_description,
+			MAX(CASE WHEN content_type = 'short_remediation' THEN content END) as short_remediation,
+			MAX(CASE WHEN content_type = 'long_remediation' THEN content END) as long_remediation
 		FROM upserted
 		GROUP BY finding_id`,
 		findingId, shortDescription,
