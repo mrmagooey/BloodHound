@@ -81,7 +81,7 @@ func (s *BloodhoundDB) GetAggregateADDataQualityStats(ctx context.Context, domai
 	const aggregateAdDataQualityStatsSql = `
 WITH aggregated_quality_stats AS (
     SELECT
-        DATE_TRUNC('day', created_at) AS created_date,
+        DATE(created_at) AS created_date,
         MAX(users) AS max_users,
         MAX(groups) AS max_groups,
         MAX(computers) AS max_computers,

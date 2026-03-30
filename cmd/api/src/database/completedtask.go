@@ -32,7 +32,7 @@ func (s *BloodhoundDB) CreateCompletedTask(ctx context.Context, task model.Compl
 		return task, nil
 	}
 	result := s.db.WithContext(ctx).Raw(
-		fmt.Sprintf("INSERT INTO %s (ingest_job_id, file_name, parent_file_name, errors, warnings, created_at, updated_at) VALUES (?, ?, ?, ?, ?, NOW(), NOW()) RETURNING id;", completedTasksTable),
+		fmt.Sprintf("INSERT INTO %s (ingest_job_id, file_name, parent_file_name, errors, warnings, created_at, updated_at) VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) RETURNING id;", completedTasksTable),
 		task.IngestJobId, task.FileName, task.ParentFileName, task.Errors, task.Warnings).Scan(&task.ID)
 	return task, CheckError(result)
 }

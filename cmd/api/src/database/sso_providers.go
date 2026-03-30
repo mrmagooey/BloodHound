@@ -185,7 +185,7 @@ func (s *BloodhoundDB) TerminateUserSessionsBySSOProvider(ctx context.Context, s
 		return ErrNotFound
 	}
 
-	return CheckError(s.db.WithContext(ctx).Table("user_sessions").Where("auth_provider_type = ? AND auth_provider_id = ?", ssoProvider.Type, childId).Update("expires_at", gorm.Expr("NOW()")))
+	return CheckError(s.db.WithContext(ctx).Table("user_sessions").Where("auth_provider_type = ? AND auth_provider_id = ?", ssoProvider.Type, childId).Update("expires_at", gorm.Expr("CURRENT_TIMESTAMP")))
 }
 
 // UpdateSSOProvider updates an entry in the sso_providers table

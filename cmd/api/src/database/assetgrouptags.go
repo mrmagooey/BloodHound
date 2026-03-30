@@ -104,7 +104,7 @@ func (s *BloodhoundDB) CreateAssetGroupTagSelector(ctx context.Context, assetGro
 		bhdb := NewBloodhoundDB(tx, s.idResolver, s.config)
 		if result := tx.Raw(fmt.Sprintf(`
 			INSERT INTO %s (asset_group_tag_id, created_at, created_by, updated_at, updated_by, name, description, is_default, allow_disable, auto_certify)
-			VALUES (?, NOW(), ?, NOW(), ?, ?, ?, ?, ?, ?)
+			VALUES (?, CURRENT_TIMESTAMP, ?, CURRENT_TIMESTAMP, ?, ?, ?, ?, ?, ?)
 			RETURNING id, asset_group_tag_id, created_at, created_by, updated_at, updated_by, disabled_at, disabled_by, name, description, is_default, allow_disable, auto_certify`,
 			selector.TableName()),
 			assetGroupTagId, userIdStr, userIdStr, name, description, isDefault, allowDisable, autoCertify).Scan(&selector); result.Error != nil {
@@ -164,7 +164,7 @@ func (s *BloodhoundDB) UpdateAssetGroupTagSelector(ctx context.Context, actorId,
 	if err := s.AuditableTransaction(ctx, auditEntry, func(tx *gorm.DB) error {
 		bhdb := NewBloodhoundDB(tx, s.idResolver, s.config)
 		if result := tx.Exec(fmt.Sprintf(`
-			UPDATE %s SET updated_at = NOW(), updated_by = ?, name = ?, description = ?, disabled_at = ?, disabled_by = ?, auto_certify = ?
+			UPDATE %s SET updated_at = CURRENT_TIMESTAMP, updated_by = ?, name = ?, description = ?, disabled_at = ?, disabled_by = ?, auto_certify = ?
 			WHERE id = ?`,
 			selector.TableName()),
 			actorId, selector.Name, selector.Description, selector.DisabledAt, selector.DisabledBy, selector.AutoCertify, selector.ID); result.Error != nil {
@@ -355,7 +355,7 @@ func (s *BloodhoundDB) CreateAssetGroupTag(ctx context.Context, tagType model.As
 				INSERT INTO %s (name) VALUES (?) RETURNING id
 			)
 			INSERT INTO %s (type, kind_id, name, description, created_at, created_by, updated_at, updated_by, position, require_certify, analysis_enabled, glyph)
-			VALUES (?, (SELECT id FROM inserted_kind), ?, ?, NOW(), ?, NOW(), ?, ?, ?, ?, ?)
+			VALUES (?, (SELECT id FROM inserted_kind), ?, ?, CURRENT_TIMESTAMP, ?, CURRENT_TIMESTAMP, ?, ?, ?, ?, ?)
 			RETURNING id, type, kind_id, name, description, created_at, created_by, updated_at, updated_by, position, require_certify, analysis_enabled, glyph
 			`, model.Kind{}.TableName(), tag.TableName())
 
@@ -451,7 +451,7 @@ func (s *BloodhoundDB) UpdateAssetGroupTag(ctx context.Context, user model.User,
 					require_certify = ?,
 					analysis_enabled = ?,
 					glyph = ?,
-					updated_at = NOW(),
+					updated_at = CURRENT_TIMESTAMP,
 					updated_by = ?
 				WHERE id = ?`,
 				tag.TableName(),
@@ -537,7 +537,7 @@ func (s *BloodhoundDB) DeleteAssetGroupTag(ctx context.Context, user model.User,
 		}
 
 		if result := tx.Exec(fmt.Sprintf(`
-			UPDATE %s SET kind_id = null, updated_at = NOW(), updated_by = ?, deleted_at = NOW(), deleted_by = ?, position = null
+			UPDATE %s SET kind_id = null, updated_at = CURRENT_TIMESTAMP, updated_by = ?, deleted_at = CURRENT_TIMESTAMP, deleted_by = ?, position = null
 			WHERE id = ?`,
 			assetGroupTag.TableName()),
 			user.ID.String(), user.ID.String(), assetGroupTag.ID); result.Error != nil {

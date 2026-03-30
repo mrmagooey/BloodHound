@@ -116,7 +116,7 @@ func (s *BloodhoundDB) CreateGraphSchemaExtension(ctx context.Context, name stri
 	if err := s.AuditableTransaction(ctx, auditEntry, func(tx *gorm.DB) error {
 		if result := tx.Raw(fmt.Sprintf(`
 			INSERT INTO %s (name, display_name, version, is_builtin, namespace, created_at, updated_at)
-			VALUES (?, ?, ?, FALSE, ?, NOW(), NOW())
+			VALUES (?, ?, ?, FALSE, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 			RETURNING id, name, display_name, version, is_builtin, namespace, created_at, updated_at, deleted_at`,
 			extension.TableName()),
 			name, displayName, version, namespace).Scan(&extension); result.Error != nil {
@@ -196,7 +196,7 @@ func (s *BloodhoundDB) GetGraphSchemaExtensions(ctx context.Context, extensionFi
 func (s *BloodhoundDB) UpdateGraphSchemaExtension(ctx context.Context, extension model.GraphSchemaExtension) (model.GraphSchemaExtension, error) {
 	if result := s.db.WithContext(ctx).Raw(fmt.Sprintf(`
 		UPDATE %s
-		SET name = ?, display_name = ?, version = ?, namespace = ?, updated_at = NOW()
+		SET name = ?, display_name = ?, version = ?, namespace = ?, updated_at = CURRENT_TIMESTAMP
 		WHERE id = ?
 		RETURNING id, name, display_name, version, is_builtin, namespace, created_at, updated_at, deleted_at`,
 		extension.TableName()), extension.Name, extension.DisplayName, extension.Version, extension.Namespace, extension.ID).Scan(&extension); result.Error != nil {
@@ -264,19 +264,45 @@ func (s *BloodhoundDB) DeleteGraphSchemaExtension(ctx context.Context, extension
 
 		// Deactivate source_kinds that are only referenced by this extension
 		if len(sourceKindIds) > 0 {
-			if result := tx.Exec(fmt.Sprintf(`
-				UPDATE source_kinds AS sk
-				SET active = false
-				FROM %s k
-				WHERE sk.kind_id = k.id
-				AND sk.id = ANY(?)
-				AND k.name NOT IN ('Base', 'AZBase')
-				AND NOT EXISTS (
-					SELECT 1
-					FROM %s se
-					WHERE se.source_kind_id = sk.id
-				)
-			`, model.Kind{}.TableName(), model.SchemaEnvironment{}.TableName()), pq.Array(sourceKindIds)); result.Error != nil {
+			var result *gorm.DB
+			if s.isSQLite() {
+				placeholders := strings.Repeat("?,", len(sourceKindIds))
+				placeholders = placeholders[:len(placeholders)-1]
+				query := fmt.Sprintf(`
+					UPDATE source_kinds
+					SET active = false
+					WHERE kind_id IN (
+						SELECT id FROM %s
+						WHERE name NOT IN ('Base', 'AZBase')
+					)
+					AND id IN (%s)
+					AND NOT EXISTS (
+						SELECT 1
+						FROM %s se
+						WHERE se.source_kind_id = source_kinds.id
+					)
+				`, model.Kind{}.TableName(), placeholders, model.SchemaEnvironment{}.TableName())
+				args := make([]interface{}, len(sourceKindIds))
+				for i, id := range sourceKindIds {
+					args[i] = id
+				}
+				result = tx.Exec(query, args...)
+			} else {
+				result = tx.Exec(fmt.Sprintf(`
+					UPDATE source_kinds AS sk
+					SET active = false
+					FROM %s k
+					WHERE sk.kind_id = k.id
+					AND sk.id = ANY(?)
+					AND k.name NOT IN ('Base', 'AZBase')
+					AND NOT EXISTS (
+						SELECT 1
+						FROM %s se
+						WHERE se.source_kind_id = sk.id
+					)
+				`, model.Kind{}.TableName(), model.SchemaEnvironment{}.TableName()), pq.Array(sourceKindIds))
+			}
+			if result.Error != nil {
 				return fmt.Errorf("failed to deactivate source kinds: %w", result.Error)
 			}
 		}
@@ -408,7 +434,7 @@ func (s *BloodhoundDB) UpdateGraphSchemaNodeKind(ctx context.Context, schemaNode
 	if result := s.db.WithContext(ctx).Raw(fmt.Sprintf(`
 		WITH updated_row AS (
 			UPDATE %s
-			SET schema_extension_id = ?, display_name = ?, description = ?, is_display_kind = ?, icon = ?, icon_color = ?, updated_at = NOW()
+			SET schema_extension_id = ?, display_name = ?, description = ?, is_display_kind = ?, icon = ?, icon_color = ?, updated_at = CURRENT_TIMESTAMP
 			WHERE id = ?
 			RETURNING id, kind_id, schema_extension_id, display_name, description, is_display_kind, icon, icon_color, created_at, updated_at, deleted_at
 		)
@@ -435,7 +461,7 @@ func (s *BloodhoundDB) UpdateGraphSchemaNodeKindIconById(ctx context.Context, id
 	if result := s.db.WithContext(ctx).Raw(fmt.Sprintf(`
 		WITH updated_row AS (
 			UPDATE %s
-			SET icon = ?, icon_color = ?, updated_at = NOW()
+			SET icon = ?, icon_color = ?, updated_at = CURRENT_TIMESTAMP
 			WHERE id = ?
 			RETURNING id, kind_id, schema_extension_id, display_name, description, is_display_kind, icon, icon_color, created_at, updated_at, deleted_at
 		)
@@ -535,7 +561,7 @@ func (s *BloodhoundDB) GetGraphSchemaPropertyById(ctx context.Context, extension
 // error if the target property does not exist or if any of the updates violate the schema constraints.
 func (s *BloodhoundDB) UpdateGraphSchemaProperty(ctx context.Context, property model.GraphSchemaProperty) (model.GraphSchemaProperty, error) {
 	if result := s.db.WithContext(ctx).Raw(fmt.Sprintf(`
-		UPDATE %s SET name = ?, schema_extension_id = ?, display_name = ?, data_type = ?, description = ?, updated_at = NOW() WHERE id = ?
+		UPDATE %s SET name = ?, schema_extension_id = ?, display_name = ?, data_type = ?, description = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
 		RETURNING id, schema_extension_id, name, display_name, data_type, description, created_at, updated_at, deleted_at`,
 		property.TableName()),
 		property.Name, property.SchemaExtensionId, property.DisplayName, property.DataType, property.Description, property.ID).Scan(&property); result.Error != nil {
@@ -704,7 +730,7 @@ func (s *BloodhoundDB) UpdateGraphSchemaRelationshipKind(ctx context.Context, sc
 	if result := s.db.WithContext(ctx).Raw(fmt.Sprintf(`
 		WITH updated_row as (
 			UPDATE %s
-			SET schema_extension_id = ?, description = ?, is_traversable = ?, updated_at = NOW()
+			SET schema_extension_id = ?, description = ?, is_traversable = ?, updated_at = CURRENT_TIMESTAMP
 			WHERE id = ?
 			RETURNING id, kind_id, schema_extension_id, description, is_traversable, created_at, updated_at, deleted_at
 		)
@@ -741,7 +767,7 @@ func (s *BloodhoundDB) CreateEnvironment(ctx context.Context, extensionId int32,
 
 	if result := s.db.WithContext(ctx).Raw(fmt.Sprintf(`
 		INSERT INTO %s (schema_extension_id, environment_kind_id, source_kind_id, created_at, updated_at)
-		VALUES (?, ?, ?, NOW(), NOW())
+		VALUES (?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 		RETURNING id, schema_extension_id, environment_kind_id, source_kind_id, created_at, updated_at, deleted_at`,
 		schemaEnvironment.TableName()),
 		extensionId, environmentKindId, sourceKindId).Scan(&schemaEnvironment); result.Error != nil {
@@ -889,7 +915,7 @@ func (s *BloodhoundDB) CreateSchemaFinding(ctx context.Context, findingType mode
 
 	if result := s.db.WithContext(ctx).Raw(fmt.Sprintf(`
 		INSERT INTO %s (type, schema_extension_id, kind_id, environment_id, name, display_name, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, NOW())
+		VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
 		RETURNING id, type, schema_extension_id, kind_id, environment_id, name, display_name, created_at`,
 		finding.TableName()),
 		findingType, extensionId, kindId, environmentId, name, displayName).Scan(&finding); result.Error != nil {
@@ -1164,7 +1190,7 @@ func (s *BloodhoundDB) CreatePrincipalKind(ctx context.Context, environmentId in
 
 	if result := s.db.WithContext(ctx).Raw(`
 		INSERT INTO schema_environments_principal_kinds (environment_id, principal_kind, created_at)
-		VALUES (?, ?, NOW())
+		VALUES (?, ?, CURRENT_TIMESTAMP)
 		RETURNING environment_id, principal_kind, created_at`,
 		environmentId, principalKind).Scan(&envPrincipalKind); result.Error != nil {
 		if strings.Contains(result.Error.Error(), DuplicateKeyValueErrorString) {
