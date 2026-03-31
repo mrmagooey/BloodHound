@@ -117,6 +117,51 @@ func (kg *KnowledgeGraph) Cypher(query string, params map[string]interface{}) (*
 	return &result, nil
 }
 
+// BatchQuery represents a single query in a batch execution.
+type BatchQuery struct {
+	Query  string                 `json:"query"`
+	Params map[string]interface{} `json:"params,omitempty"`
+}
+
+// CypherBatch executes multiple Cypher queries in a single Mutex lock acquisition.
+// This is significantly faster than calling Cypher() in a loop because it avoids
+// repeated CGO boundary crossings and Mutex lock/unlock per query.
+func (kg *KnowledgeGraph) CypherBatch(queries []BatchQuery) ([]*CypherResult, error) {
+	if len(queries) == 0 {
+		return nil, nil
+	}
+
+	b, err := json.Marshal(queries)
+	if err != nil {
+		return nil, fmt.Errorf("kglite: marshal batch: %w", err)
+	}
+	cjson := C.CString(string(b))
+	defer C.free(unsafe.Pointer(cjson))
+
+	var out *C.char
+	rc := C.kg_cypher_batch(kg.h, cjson, &out)
+	if rc != 0 {
+		return nil, fmt.Errorf("kglite: kg_cypher_batch: %s", lastError())
+	}
+	defer C.kg_free_string(out)
+
+	goJSON := C.GoString(out)
+	var rawResults []json.RawMessage
+	if err := json.Unmarshal([]byte(goJSON), &rawResults); err != nil {
+		return nil, fmt.Errorf("kglite: unmarshal batch result: %w", err)
+	}
+
+	results := make([]*CypherResult, len(rawResults))
+	for i, raw := range rawResults {
+		var r CypherResult
+		if err := json.Unmarshal(raw, &r); err != nil {
+			return nil, fmt.Errorf("kglite: unmarshal batch result[%d]: %w", i, err)
+		}
+		results[i] = &r
+	}
+	return results, nil
+}
+
 // CypherRows is a convenience wrapper that returns rows as []map[string]interface{}.
 func (kg *KnowledgeGraph) CypherRows(query string, params map[string]interface{}) ([]map[string]interface{}, error) {
 	result, err := kg.Cypher(query, params)

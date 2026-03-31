@@ -136,13 +136,19 @@ func (d *Driver) WriteTransaction(ctx context.Context, txDelegate graph.Transact
 	return txDelegate(tx)
 }
 
-// BatchOperation opens a batch write context.
+// BatchOperation opens a batch write context with accumulated flush.
 func (d *Driver) BatchOperation(ctx context.Context, batchDelegate graph.BatchDelegate) error {
 	batch := &Batch{
-		ctx:    ctx,
-		driver: d,
+		ctx:       ctx,
+		driver:    d,
+		pending:   make([]kglite.BatchQuery, 0, defaultBatchFlushSize),
+		flushSize: defaultBatchFlushSize,
 	}
-	return batchDelegate(batch)
+	if err := batchDelegate(batch); err != nil {
+		return err
+	}
+	// Flush any remaining buffered operations
+	return batch.flush()
 }
 
 // Save persists the graph to disk at the configured graph path.

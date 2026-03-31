@@ -29,22 +29,25 @@ var jsonUnmarshal = json.Unmarshal
 
 // kgliteResult implements graph.Result over a kglite.CypherResult.
 type kgliteResult struct {
-	result  *kglite.CypherResult
-	rowIdx  int
-	err     error
-	mapper  graph.ValueMapper
+	result          *kglite.CypherResult
+	rowIdx          int
+	err             error
+	mapper          graph.ValueMapper
+	convertedRow    []any // cached converted values for current row
+	convertedRowIdx int   // which rowIdx the cache is for
 }
 
 func newResult(r *kglite.CypherResult) *kgliteResult {
 	return &kgliteResult{
-		result: r,
-		rowIdx: -1,
-		mapper: graph.NewValueMapper(mapValue),
+		result:          r,
+		rowIdx:          -1,
+		convertedRowIdx: -1,
+		mapper:          graph.NewValueMapper(mapValue),
 	}
 }
 
 func newErrorResult(err error) *kgliteResult {
-	return &kgliteResult{err: err, rowIdx: -1, mapper: graph.NewValueMapper(mapValue)}
+	return &kgliteResult{err: err, rowIdx: -1, convertedRowIdx: -1, mapper: graph.NewValueMapper(mapValue)}
 }
 
 func (r *kgliteResult) Next() bool {
@@ -67,10 +70,18 @@ func (r *kgliteResult) Values() []any {
 		return nil
 	}
 	row := r.result.Rows[r.rowIdx]
+
+	// Check if we already converted this row (cache converted rows)
+	if r.convertedRow != nil && r.convertedRowIdx == r.rowIdx {
+		return r.convertedRow
+	}
+
 	vals := make([]any, len(row))
 	for i, v := range row {
 		vals[i] = convertValue(v)
 	}
+	r.convertedRow = vals
+	r.convertedRowIdx = r.rowIdx
 	return vals
 }
 

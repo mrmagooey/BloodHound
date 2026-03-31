@@ -21,14 +21,21 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/specterops/bloodhound/packages/go/kglite"
 	"github.com/specterops/dawgs/graph"
 	neo4jquery "github.com/specterops/dawgs/query/neo4j"
 )
 
-// Batch implements graph.Batch using kglite.
+const defaultBatchFlushSize = 500
+
+// Batch implements graph.Batch using kglite with accumulated flush.
+// Operations are buffered and sent to kglite in a single CypherBatch
+// call when the buffer reaches flushSize or when Commit() is called.
 type Batch struct {
-	ctx    context.Context
-	driver *Driver
+	ctx       context.Context
+	driver    *Driver
+	pending   []kglite.BatchQuery
+	flushSize int
 }
 
 func (b *Batch) WithGraph(_ graph.Graph) graph.Batch {
@@ -36,7 +43,31 @@ func (b *Batch) WithGraph(_ graph.Graph) graph.Batch {
 }
 
 func (b *Batch) Commit() error {
+	return b.flush()
+}
+
+func (b *Batch) flush() error {
+	if len(b.pending) == 0 {
+		return nil
+	}
+	_, err := b.driver.kg.CypherBatch(b.pending)
+	b.pending = b.pending[:0]
+	return err
+}
+
+func (b *Batch) maybeFlush() error {
+	if len(b.pending) >= b.flushSize {
+		return b.flush()
+	}
 	return nil
+}
+
+func (b *Batch) enqueue(cypher string, params map[string]any) error {
+	b.pending = append(b.pending, kglite.BatchQuery{
+		Query:  cypher,
+		Params: params,
+	})
+	return b.maybeFlush()
 }
 
 // Nodes returns a NodeQuery for bulk operations.
@@ -79,20 +110,18 @@ func (b *Batch) CreateNode(node *graph.Node) error {
 	}
 
 	pattern, params := propsPattern("p_", propsMap)
-	_, err := b.driver.kg.Cypher(
+	return b.enqueue(
 		fmt.Sprintf("CREATE (n:%s %s)", quoteIdent(node.Kinds[0].String()), pattern),
 		params,
 	)
-	return err
 }
 
 // DeleteNode deletes a node by ID.
 func (b *Batch) DeleteNode(id graph.ID) error {
-	_, err := b.driver.kg.Cypher(
+	return b.enqueue(
 		"MATCH (n) WHERE id(n) = $id DETACH DELETE n",
 		map[string]any{"id": uint64(id)},
 	)
-	return err
 }
 
 // CreateRelationship creates a relationship (upsert on start_id+end_id+kind).
@@ -127,17 +156,15 @@ func (b *Batch) CreateRelationshipByIDs(startNodeID, endNodeID graph.ID, kind gr
 		`MATCH (s) WHERE id(s) = $start_id MATCH (e) WHERE id(e) = $end_id MERGE (s)-[r:%s %s]->(e)`,
 		quoteIdent(kindStr), relPattern,
 	)
-	_, err := b.driver.kg.Cypher(cypher, mergeParams(baseParams, relParams))
-	return err
+	return b.enqueue(cypher, mergeParams(baseParams, relParams))
 }
 
 // DeleteRelationship deletes a relationship by ID.
 func (b *Batch) DeleteRelationship(id graph.ID) error {
-	_, err := b.driver.kg.Cypher(
+	return b.enqueue(
 		"MATCH ()-[r]->() WHERE id(r) = $id DELETE r",
 		map[string]any{"id": uint64(id)},
 	)
-	return err
 }
 
 // UpdateNodeBy performs an upsert of a node identified by identity kind and properties.
@@ -175,7 +202,6 @@ func (b *Batch) UpdateNodeBy(update graph.NodeUpdate) error {
 	}
 
 	// Store extra kinds as a __kinds property so they're queryable.
-	// kglite nodes have a single node_type; SET n:Label is not supported.
 	if len(update.Node.Kinds) > 1 {
 		allKinds := make([]string, len(update.Node.Kinds))
 		for i, k := range update.Node.Kinds {
@@ -194,8 +220,7 @@ func (b *Batch) UpdateNodeBy(update graph.NodeUpdate) error {
 		cypher = fmt.Sprintf("MERGE (n:%s %s) SET %s", quoteIdent(kindStr), identityPattern, setFrag)
 	}
 
-	_, err := b.driver.kg.Cypher(cypher, mergeParams(identityParams, propParams))
-	return err
+	return b.enqueue(cypher, mergeParams(identityParams, propParams))
 }
 
 // UpdateRelationshipBy performs an upsert of a relationship identified by start/end/kind/properties.
@@ -256,14 +281,12 @@ func (b *Batch) UpdateRelationshipBy(update graph.RelationshipUpdate) error {
 	endPattern, endIdParams := propsPattern("ei_", endIdentity)
 	relPattern, relParams := propsPattern("rp_", relProps)
 
-	// Inline relationship props in MERGE pattern; kglite doesn't support SET for relationship vars.
-	// Backtick-quote kind names to avoid reserved keyword collisions (e.g. "Contains").
 	cypher := fmt.Sprintf(
 		`MERGE (s%s %s) MERGE (e%s %s) MERGE (s)-[r:%s %s]->(e)`,
 		startKindStr, startPattern, endKindStr, endPattern, quoteIdent(relKindStr), relPattern,
 	)
 
-	// SET node properties (node vars are supported in SET)
+	// SET node properties
 	setParts := []string{}
 	startSetFrag, startPropParams := setClause("s", "sp_", startProps)
 	endSetFrag, endPropParams := setClause("e", "ep_", endProps)
@@ -278,6 +301,5 @@ func (b *Batch) UpdateRelationshipBy(update graph.RelationshipUpdate) error {
 		cypher += " SET " + strings.Join(setParts, ", ")
 	}
 
-	_, err := b.driver.kg.Cypher(cypher, mergeParams(startIdParams, endIdParams, relParams, startPropParams, endPropParams))
-	return err
+	return b.enqueue(cypher, mergeParams(startIdParams, endIdParams, relParams, startPropParams, endPropParams))
 }
