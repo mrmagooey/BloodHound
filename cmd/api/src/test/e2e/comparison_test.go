@@ -76,13 +76,39 @@ func normalizeResult(s string) string {
 	return floatIntPattern.ReplaceAllString(s, "$1")
 }
 
+// runQueryValues executes a Cypher query and returns the first row's values as a string.
+// Unlike runQuery, this doesn't depend on Keys() being populated (Neo4j driver returns empty keys).
+func runQueryValues(ctx context.Context, db graph.Database, cypher string) (string, time.Duration, error) {
+	start := time.Now()
+	var out strings.Builder
+	err := db.ReadTransaction(ctx, func(tx graph.Transaction) error {
+		result := tx.Raw(cypher, nil)
+		defer result.Close()
+		if result.Error() != nil {
+			return result.Error()
+		}
+		for result.Next() {
+			vals := result.Values()
+			for i, v := range vals {
+				if i > 0 {
+					out.WriteString(", ")
+				}
+				fmt.Fprintf(&out, "%v", v)
+			}
+			out.WriteString("\n")
+		}
+		return result.Error()
+	})
+	return strings.TrimRight(out.String(), "\n"), time.Since(start), err
+}
+
 func compareQueries(ctx context.Context, t *testing.T,
 	kgliteDB, neo4jDB graph.Database, queries []presetQuery) []comparisonResult {
 	t.Helper()
 	results := make([]comparisonResult, 0, len(queries))
 	for _, q := range queries {
-		kResult, kDur, kErr := runQuery(ctx, kgliteDB, q.Cypher)
-		nResult, nDur, nErr := runQuery(ctx, neo4jDB, q.Cypher)
+		kResult, kDur, kErr := runQueryValues(ctx, kgliteDB, q.Cypher)
+		nResult, nDur, nErr := runQueryValues(ctx, neo4jDB, q.Cypher)
 
 		kNorm := normalizeResult(kResult)
 		nNorm := normalizeResult(nResult)

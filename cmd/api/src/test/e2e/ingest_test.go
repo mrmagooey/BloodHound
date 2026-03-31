@@ -97,7 +97,7 @@ func ingestZip(ctx context.Context, t *testing.T, db graph.Database, zipPath str
 
 	resolver := endpoint.NewResolver(db)
 	ic := graphify.NewIngestContext(ctx,
-		graphify.WithIngestTime(time.Now()),
+		graphify.WithIngestTime(time.Now().UTC()),
 		graphify.WithEndpointResolver(resolver),
 	)
 
