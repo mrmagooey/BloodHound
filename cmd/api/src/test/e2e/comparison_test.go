@@ -138,10 +138,12 @@ func truncateStr(s string, max int) string {
 func reportComparison(t *testing.T, results []comparisonResult) {
 	t.Helper()
 	var matches, mismatches, errors int
+	var totalKglite, totalNeo4j time.Duration
 
 	t.Logf("")
-	t.Logf("%-40s | %-25s | %-25s | %s", "Query", "kglite", "Neo4j", "Status")
-	t.Logf("%s", strings.Repeat("-", 110))
+	t.Logf("%-40s | %-20s | %-20s | %10s %10s %8s | %s",
+		"Query", "kglite", "Neo4j", "kglite_ms", "neo4j_ms", "speedup", "Status")
+	t.Logf("%s", strings.Repeat("-", 140))
 
 	for _, r := range results {
 		kStr := r.KgliteResult
@@ -164,16 +166,36 @@ func reportComparison(t *testing.T, results []comparisonResult) {
 			matches++
 		}
 
-		t.Logf("%-40s | %-25s | %-25s | %s",
+		totalKglite += r.KgliteDur
+		totalNeo4j += r.Neo4jDur
+
+		speedup := "n/a"
+		if r.KgliteDur > 0 && r.Neo4jDur > 0 {
+			ratio := float64(r.Neo4jDur) / float64(r.KgliteDur)
+			speedup = fmt.Sprintf("%.1fx", ratio)
+		}
+
+		t.Logf("%-40s | %-20s | %-20s | %10s %10s %8s | %s",
 			truncateStr(r.QueryName, 40),
-			truncateStr(kStr, 25),
-			truncateStr(nStr, 25),
+			truncateStr(kStr, 20),
+			truncateStr(nStr, 20),
+			r.KgliteDur.Round(time.Microsecond),
+			r.Neo4jDur.Round(time.Microsecond),
+			speedup,
 			status)
 	}
 
-	t.Logf("%s", strings.Repeat("-", 110))
-	t.Logf("Total: %d queries | %d MATCH | %d MISMATCH | %d ERROR",
-		len(results), matches, mismatches, errors)
+	t.Logf("%s", strings.Repeat("-", 140))
+	totalSpeedup := "n/a"
+	if totalKglite > 0 && totalNeo4j > 0 {
+		totalSpeedup = fmt.Sprintf("%.1fx", float64(totalNeo4j)/float64(totalKglite))
+	}
+	t.Logf("%-40s | %-20s | %-20s | %10s %10s %8s | %d match, %d mismatch, %d error",
+		fmt.Sprintf("TOTAL (%d queries)", len(results)), "", "",
+		totalKglite.Round(time.Millisecond),
+		totalNeo4j.Round(time.Millisecond),
+		totalSpeedup,
+		matches, mismatches, errors)
 	t.Logf("")
 }
 
@@ -195,18 +217,37 @@ func TestCompareAD(t *testing.T) {
 
 	// Ingest into both
 	t.Log("=== Ingesting AD data into kglite ===")
-	kDur := ingestZip(ctx, t, kgliteDB, adZip, ingestSchema)
-	t.Logf("  kglite ingest: %s", kDur.Round(time.Millisecond))
+	kIngestDur := ingestZip(ctx, t, kgliteDB, adZip, ingestSchema)
+	t.Logf("  kglite ingest: %s", kIngestDur.Round(time.Millisecond))
 
 	t.Log("=== Ingesting AD data into Neo4j ===")
-	nDur := ingestZip(ctx, t, neo4jDB, adZip, ingestSchema)
-	t.Logf("  Neo4j ingest: %s", nDur.Round(time.Millisecond))
+	nIngestDur := ingestZip(ctx, t, neo4jDB, adZip, ingestSchema)
+	t.Logf("  Neo4j ingest: %s", nIngestDur.Round(time.Millisecond))
 
 	// Analysis on both
 	t.Log("=== Running analysis on kglite ===")
-	runAnalysis(ctx, t, kgliteDB)
+	kAnalysisDur := runAnalysis(ctx, t, kgliteDB)
 	t.Log("=== Running analysis on Neo4j ===")
-	runAnalysis(ctx, t, neo4jDB)
+	nAnalysisDur := runAnalysis(ctx, t, neo4jDB)
+
+	// Performance summary: ingest + analysis
+	t.Log("")
+	t.Log("=== Performance Summary: AD ===")
+	t.Logf("%-25s %12s %12s %10s", "Phase", "kglite", "Neo4j", "Speedup")
+	t.Logf("%s", strings.Repeat("-", 65))
+	t.Logf("%-25s %12s %12s %10.1fx", "Ingest",
+		kIngestDur.Round(time.Millisecond), nIngestDur.Round(time.Millisecond),
+		float64(nIngestDur)/float64(kIngestDur))
+	t.Logf("%-25s %12s %12s %10.1fx", "Analysis",
+		kAnalysisDur.Round(time.Millisecond), nAnalysisDur.Round(time.Millisecond),
+		float64(nAnalysisDur)/float64(kAnalysisDur))
+	totalK := kIngestDur + kAnalysisDur
+	totalN := nIngestDur + nAnalysisDur
+	t.Logf("%-25s %12s %12s %10.1fx", "Total (ingest+analysis)",
+		totalK.Round(time.Millisecond), totalN.Round(time.Millisecond),
+		float64(totalN)/float64(totalK))
+	t.Logf("%s", strings.Repeat("-", 65))
+	t.Log("")
 
 	// Compare preset queries
 	t.Log("=== Comparing AD preset queries ===")
@@ -241,17 +282,36 @@ func TestCompareAzure(t *testing.T) {
 	ingestSchema := loadIngestSchema(t)
 
 	t.Log("=== Ingesting Azure data into kglite ===")
-	kDur := ingestZip(ctx, t, kgliteDB, azureZip, ingestSchema)
-	t.Logf("  kglite ingest: %s", kDur.Round(time.Millisecond))
+	kIngestDur := ingestZip(ctx, t, kgliteDB, azureZip, ingestSchema)
+	t.Logf("  kglite ingest: %s", kIngestDur.Round(time.Millisecond))
 
 	t.Log("=== Ingesting Azure data into Neo4j ===")
-	nDur := ingestZip(ctx, t, neo4jDB, azureZip, ingestSchema)
-	t.Logf("  Neo4j ingest: %s", nDur.Round(time.Millisecond))
+	nIngestDur := ingestZip(ctx, t, neo4jDB, azureZip, ingestSchema)
+	t.Logf("  Neo4j ingest: %s", nIngestDur.Round(time.Millisecond))
 
 	t.Log("=== Running analysis on kglite ===")
-	runAnalysis(ctx, t, kgliteDB)
+	kAnalysisDur := runAnalysis(ctx, t, kgliteDB)
 	t.Log("=== Running analysis on Neo4j ===")
-	runAnalysis(ctx, t, neo4jDB)
+	nAnalysisDur := runAnalysis(ctx, t, neo4jDB)
+
+	// Performance summary
+	t.Log("")
+	t.Log("=== Performance Summary: Azure ===")
+	t.Logf("%-25s %12s %12s %10s", "Phase", "kglite", "Neo4j", "Speedup")
+	t.Logf("%s", strings.Repeat("-", 65))
+	t.Logf("%-25s %12s %12s %10.1fx", "Ingest",
+		kIngestDur.Round(time.Millisecond), nIngestDur.Round(time.Millisecond),
+		float64(nIngestDur)/float64(kIngestDur))
+	t.Logf("%-25s %12s %12s %10.1fx", "Analysis",
+		kAnalysisDur.Round(time.Millisecond), nAnalysisDur.Round(time.Millisecond),
+		float64(nAnalysisDur)/float64(kAnalysisDur))
+	totalK := kIngestDur + kAnalysisDur
+	totalN := nIngestDur + nAnalysisDur
+	t.Logf("%-25s %12s %12s %10.1fx", "Total (ingest+analysis)",
+		totalK.Round(time.Millisecond), totalN.Round(time.Millisecond),
+		float64(totalN)/float64(totalK))
+	t.Logf("%s", strings.Repeat("-", 65))
+	t.Log("")
 
 	t.Log("=== Comparing Azure preset queries ===")
 	results := compareQueries(ctx, t, kgliteDB, neo4jDB, azurePresetQueries)
