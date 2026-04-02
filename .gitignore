@@ -465,3 +465,9 @@ go-test-results.json
 # standalone build artifacts
 bhapi
 ingestor
+
+# Claude Code
+.claude/
+
+# Debug scratch files
+packages/go/kglite/dawgs/debug_test.go

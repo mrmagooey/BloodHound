@@ -194,16 +194,12 @@ func (t *Transaction) Commit() error {
 // Raw executes a raw Cypher query and returns a graph.Result.
 func (t *Transaction) Raw(cypher string, parameters map[string]any) graph.Result {
 	rewritten := rewriteForKglite(cypher, parameters)
-	if cypher != rewritten {
-		fmt.Printf("KGLITE-REWRITE:\n  from: %s\n  to:   %s\n\n", cypher, rewritten)
-	}
 	start := time.Now()
 	result, err := t.driver.kg.Cypher(rewritten, parameters)
 	if ProfilingEnabled() {
 		recordQuery(rewritten, time.Since(start))
 	}
 	if err != nil {
-		fmt.Printf("KGLITE-DEBUG FAIL:\n  original: %s\n  rewritten: %s\n  err: %v\n\n", cypher, rewritten, err)
 		return newErrorResult(err)
 	}
 	// Convert JSON values in rows to DAWGS types
