@@ -18,6 +18,7 @@ package dawgs
 
 import (
 	"context"
+	"strings"
 
 	"github.com/specterops/dawgs/graph"
 	"github.com/specterops/dawgs/query"
@@ -371,6 +372,10 @@ func (q *relQuery) FetchAllShortestPaths(delegate func(graph.Cursor[graph.Path])
 	cypher, err := q.queryBuilder.Render()
 	if err != nil {
 		return err
+	}
+	// The query builder omits RETURN for allShortestPaths; add RETURN p
+	if !strings.Contains(strings.ToLower(cypher), "return ") {
+		cypher += " return p"
 	}
 	result := q.run(cypher, q.queryBuilder.Parameters)
 	if result.Error() != nil {

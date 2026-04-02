@@ -19,6 +19,59 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// isNeo4jTransientError checks whether an error is a transient Neo4j error
+// that is worth retrying (database unavailable, deadlock, connection issues).
+func isNeo4jTransientError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	for _, substr := range []string{
+		"TransientError",
+		"DatabaseUnavailable",
+		"DeadlockDetected",
+		"connection refused",
+		"connection reset",
+	} {
+		if strings.Contains(msg, substr) {
+			return true
+		}
+	}
+	return false
+}
+
+// retryNeo4j retries fn on Neo4j transient errors with exponential backoff.
+// The maximum total wait time is approximately 30 seconds.
+// Non-transient errors are returned immediately without retrying.
+func retryNeo4j(t *testing.T, name string, fn func() error) error {
+	t.Helper()
+	backoffs := []time.Duration{
+		500 * time.Millisecond,
+		1 * time.Second,
+		2 * time.Second,
+		4 * time.Second,
+		8 * time.Second,
+		15 * time.Second,
+	}
+	var err error
+	for attempt := 0; ; attempt++ {
+		err = fn()
+		if err == nil {
+			return nil
+		}
+		if !isNeo4jTransientError(err) {
+			return err
+		}
+		if attempt >= len(backoffs) {
+			t.Logf("retryNeo4j(%s): exhausted %d retries, last error: %v", name, len(backoffs), err)
+			return err
+		}
+		t.Logf("retryNeo4j(%s): attempt %d failed with transient error, retrying in %s: %v",
+			name, attempt+1, backoffs[attempt], err)
+		time.Sleep(backoffs[attempt])
+	}
+}
+
 // openNeo4j opens a connection to the test Neo4j instance.
 // Skips the test if Neo4j is not available (docker-compose.testing.yml not running).
 func openNeo4j(t *testing.T) graph.Database {
@@ -31,11 +84,13 @@ func openNeo4j(t *testing.T) graph.Database {
 	if err != nil {
 		t.Skipf("Neo4j not available (start with: docker compose -f docker-compose.testing.yml up -d): %v", err)
 	}
-	// Verify connectivity
-	err = db.ReadTransaction(ctx, func(tx graph.Transaction) error {
-		result := tx.Raw("RETURN 1 AS n", nil)
-		defer result.Close()
-		return result.Error()
+	// Verify connectivity with retry (container may still be starting)
+	err = retryNeo4j(t, "openNeo4j", func() error {
+		return db.ReadTransaction(ctx, func(tx graph.Transaction) error {
+			result := tx.Raw("RETURN 1 AS n", nil)
+			defer result.Close()
+			return result.Error()
+		})
 	})
 	if err != nil {
 		db.Close(ctx)
@@ -48,10 +103,12 @@ func openNeo4j(t *testing.T) graph.Database {
 // clearNeo4j removes all nodes and relationships from Neo4j.
 func clearNeo4j(ctx context.Context, t *testing.T, db graph.Database) {
 	t.Helper()
-	err := db.WriteTransaction(ctx, func(tx graph.Transaction) error {
-		result := tx.Raw("MATCH (n) DETACH DELETE n", nil)
-		defer result.Close()
-		return result.Error()
+	err := retryNeo4j(t, "clearNeo4j", func() error {
+		return db.WriteTransaction(ctx, func(tx graph.Transaction) error {
+			result := tx.Raw("MATCH (n) DETACH DELETE n", nil)
+			defer result.Close()
+			return result.Error()
+		})
 	})
 	require.NoError(t, err, "failed to clear Neo4j")
 }
@@ -78,28 +135,33 @@ func normalizeResult(s string) string {
 
 // runQueryValues executes a Cypher query and returns the first row's values as a string.
 // Unlike runQuery, this doesn't depend on Keys() being populated (Neo4j driver returns empty keys).
-func runQueryValues(ctx context.Context, db graph.Database, cypher string) (string, time.Duration, error) {
+func runQueryValues(ctx context.Context, t *testing.T, db graph.Database, cypher string) (string, time.Duration, error) {
 	start := time.Now()
 	var out strings.Builder
-	err := db.ReadTransaction(ctx, func(tx graph.Transaction) error {
-		result := tx.Raw(cypher, nil)
-		defer result.Close()
-		if result.Error() != nil {
-			return result.Error()
-		}
-		for result.Next() {
-			vals := result.Values()
-			for i, v := range vals {
-				if i > 0 {
-					out.WriteString(", ")
-				}
-				fmt.Fprintf(&out, "%v", v)
+	var queryErr error
+	retryErr := retryNeo4j(t, "runQueryValues", func() error {
+		out.Reset()
+		queryErr = db.ReadTransaction(ctx, func(tx graph.Transaction) error {
+			result := tx.Raw(cypher, nil)
+			defer result.Close()
+			if result.Error() != nil {
+				return result.Error()
 			}
-			out.WriteString("\n")
-		}
-		return result.Error()
+			for result.Next() {
+				vals := result.Values()
+				for i, v := range vals {
+					if i > 0 {
+						out.WriteString(", ")
+					}
+					fmt.Fprintf(&out, "%v", v)
+				}
+				out.WriteString("\n")
+			}
+			return result.Error()
+		})
+		return queryErr
 	})
-	return strings.TrimRight(out.String(), "\n"), time.Since(start), err
+	return strings.TrimRight(out.String(), "\n"), time.Since(start), retryErr
 }
 
 func compareQueries(ctx context.Context, t *testing.T,
@@ -107,8 +169,8 @@ func compareQueries(ctx context.Context, t *testing.T,
 	t.Helper()
 	results := make([]comparisonResult, 0, len(queries))
 	for _, q := range queries {
-		kResult, kDur, kErr := runQueryValues(ctx, kgliteDB, q.Cypher)
-		nResult, nDur, nErr := runQueryValues(ctx, neo4jDB, q.Cypher)
+		kResult, kDur, kErr := runQueryValues(ctx, t, kgliteDB, q.Cypher)
+		nResult, nDur, nErr := runQueryValues(ctx, t, neo4jDB, q.Cypher)
 
 		kNorm := normalizeResult(kResult)
 		nNorm := normalizeResult(nResult)
@@ -211,7 +273,9 @@ func TestCompareAD(t *testing.T) {
 
 	// Prepare Neo4j
 	clearNeo4j(ctx, t, neo4jDB)
-	require.NoError(t, neo4jDB.AssertSchema(ctx, schema.DefaultGraphSchema()))
+	require.NoError(t, retryNeo4j(t, "AssertSchema", func() error {
+		return neo4jDB.AssertSchema(ctx, schema.DefaultGraphSchema())
+	}))
 
 	ingestSchema := loadIngestSchema(t)
 
@@ -277,7 +341,9 @@ func TestCompareAzure(t *testing.T) {
 	neo4jDB := openNeo4j(t)
 
 	clearNeo4j(ctx, t, neo4jDB)
-	require.NoError(t, neo4jDB.AssertSchema(ctx, schema.DefaultGraphSchema()))
+	require.NoError(t, retryNeo4j(t, "AssertSchema", func() error {
+		return neo4jDB.AssertSchema(ctx, schema.DefaultGraphSchema())
+	}))
 
 	ingestSchema := loadIngestSchema(t)
 

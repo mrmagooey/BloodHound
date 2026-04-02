@@ -24,7 +24,7 @@ var adAttackPathEdges = []edgeAssertion{
 	{"DCSync", "DCSync", 8},
 	{"HasSession", "HasSession", 29},
 	{"MemberOf", "MemberOf", 304},
-	{"AdminTo", "AdminTo", 0},
+	{"AdminTo", "AdminTo", 24},
 	{"CanRDP", "CanRDP", 0},
 	{"CanPSRemote", "CanPSRemote", 0},
 	{"ExecuteDCOM", "ExecuteDCOM", 0},
@@ -39,15 +39,15 @@ var adAttackPathEdges = []edgeAssertion{
 	{"AddMember", "AddMember", 93},
 
 	// ADCS escalation paths
-	{"ADCSESC1", "ADCSESC1", 0},
-	{"ADCSESC3", "ADCSESC3", 0},
-	{"ADCSESC4", "ADCSESC4", 0},
-	{"ADCSESC6a", "ADCSESC6a", 0},
-	{"ADCSESC6b", "ADCSESC6b", 0},
-	{"ADCSESC9a", "ADCSESC9a", 0},
-	{"ADCSESC9b", "ADCSESC9b", 0},
-	{"ADCSESC10a", "ADCSESC10a", 0},
-	{"ADCSESC10b", "ADCSESC10b", 0},
+	{"ADCSESC1", "ADCSESC1", 7},
+	{"ADCSESC3", "ADCSESC3", 12},
+	{"ADCSESC4", "ADCSESC4", 7},
+	{"ADCSESC6a", "ADCSESC6a", 5},
+	{"ADCSESC6b", "ADCSESC6b", 12},
+	{"ADCSESC9a", "ADCSESC9a", 14},
+	{"ADCSESC9b", "ADCSESC9b", 10},
+	{"ADCSESC10a", "ADCSESC10a", 7},
+	{"ADCSESC10b", "ADCSESC10b", 8},
 	{"ADCSESC13", "ADCSESC13", 0},
 
 	// NTLM relay
@@ -59,13 +59,13 @@ var adAttackPathEdges = []edgeAssertion{
 	{"GPOAppliesTo", "GPOAppliesTo", 0},
 	// Note: "Contains" and "TrustedForNTAuth" conflict with kglite Cypher keywords;
 	// they are tested via the generic relationship count query below instead.
-	{"GoldenCert", "GoldenCert", 0},
+	{"GoldenCert", "GoldenCert", 4},
 }
 
 var azureAttackPathEdges = []edgeAssertion{
-	{"AZGlobalAdmin", "AZGlobalAdmin", 0},
+	{"AZGlobalAdmin", "AZGlobalAdmin", 30},
 	{"AZOwns", "AZOwns", 2850},
-	{"AZPrivilegedRoleAdmin", "AZPrivilegedRoleAdmin", 0},
+	{"AZPrivilegedRoleAdmin", "AZPrivilegedRoleAdmin", 8},
 	{"AZMemberOf", "AZMemberOf", 4439},
 	{"AZHasRole", "AZHasRole", 598},
 	{"AZContributor", "AZContributor", 25},

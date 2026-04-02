@@ -15,10 +15,10 @@ import (
 
 var adExpectedCounts = map[string]int64{
 	"Total nodes":                        1519,
-	"Total relationships":                16367,
+	"Total relationships":                16654,
 	"Computers":                          34,
 	"Users":                              99,
-	"Groups":                             219,
+	"Groups":                             243,
 	"Kerberoastable users":               2,
 	"AS-REP roastable users":             1,
 	"AdminCount users":                   40,
@@ -26,7 +26,7 @@ var adExpectedCounts = map[string]int64{
 	"Enabled domain admin users":         16,
 	"DCSync relationships":               8,
 	"HasSession relationships":           29,
-	"AdminTo relationships":              0,
+	"AdminTo relationships":              24,
 	"MemberOf relationships":             304,
 	"ADCS cert templates":                106,
 	"Enterprise CAs":                     4,
@@ -38,21 +38,21 @@ var adExpectedCounts = map[string]int64{
 var azureExpectedCounts = map[string]int64{
 	"Azure tenants":            1,
 	"Azure users":              230,
-	"Azure service principals": 6269,
+	"Azure service principals": 6270,
 	"Azure apps":               6648,
 	"Azure VMs":                66,
-	"Azure groups":             48,
-	"AZGlobalAdmin relationships": 0,
+	"Azure groups":             58,
+	"AZGlobalAdmin relationships": 30,
 	"AZOwns relationships":        2850,
 }
 
 var combinedExpectedCounts = map[string]int64{
 	// AD queries against combined graph
 	"Total nodes":                        15074,
-	"Total relationships":                43755,
+	"Total relationships":                826355,
 	"Computers":                          34,
 	"Users":                              111,
-	"Groups":                             236,
+	"Groups":                             260,
 	"Kerberoastable users":               2,
 	"AS-REP roastable users":             1,
 	"AdminCount users":                   40,
@@ -60,7 +60,7 @@ var combinedExpectedCounts = map[string]int64{
 	"Enabled domain admin users":         16,
 	"DCSync relationships":               8,
 	"HasSession relationships":           29,
-	"AdminTo relationships":              0,
+	"AdminTo relationships":              24,
 	"MemberOf relationships":             304,
 	"ADCS cert templates":                106,
 	"Enterprise CAs":                     4,
@@ -70,11 +70,11 @@ var combinedExpectedCounts = map[string]int64{
 	// Azure queries against combined graph
 	"Azure tenants":            1,
 	"Azure users":              230,
-	"Azure service principals": 6269,
+	"Azure service principals": 6270,
 	"Azure apps":               6648,
 	"Azure VMs":                66,
-	"Azure groups":             48,
-	"AZGlobalAdmin relationships": 0,
+	"Azure groups":             58,
+	"AZGlobalAdmin relationships": 30,
 	"AZOwns relationships":        2850,
 }
 

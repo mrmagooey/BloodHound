@@ -18,7 +18,9 @@ package azure
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/specterops/bloodhound/packages/go/analysis"
 	azureAnalysis "github.com/specterops/bloodhound/packages/go/analysis/azure"
@@ -41,28 +43,70 @@ func Post(ctx context.Context, db graph.Database) (*analysis.AtomicPostProcessin
 	)()
 
 	aggregateStats := analysis.NewAtomicPostProcessingStats()
-	if err := azureAnalysis.FixManagementGroupNames(ctx, db); err != nil {
+
+	timeStage := func(name string, fn func() error) error {
+		start := time.Now()
+		err := fn()
+		fmt.Printf("AZURE-STAGE: %-45s %v\n", name, time.Since(start))
+		return err
+	}
+
+	if err := timeStage("FixManagementGroupNames", func() error {
+		return azureAnalysis.FixManagementGroupNames(ctx, db)
+	}); err != nil {
 		slog.WarnContext(ctx, "Error fixing management group names", attr.Error(err))
 	}
-	if stats, err := analysis.DeleteTransitEdges(ctx, db, graph.Kinds{ad.Entity, azure.Entity}, azure.PostProcessedRelationships()); err != nil {
+
+	var stats, userRoleStats, executeCommandStats, appRoleAssignmentStats, hybridStats, pimRolesStats *analysis.AtomicPostProcessingStats
+	var err error
+
+	if err = timeStage("DeleteTransitEdges", func() error {
+		stats, err = analysis.DeleteTransitEdges(ctx, db, graph.Kinds{ad.Entity, azure.Entity}, azure.PostProcessedRelationships())
+		return err
+	}); err != nil {
 		return &aggregateStats, err
-	} else if userRoleStats, err := azureAnalysis.UserRoleAssignments(ctx, db); err != nil {
-		return &aggregateStats, err
-	} else if executeCommandStats, err := azureAnalysis.ExecuteCommand(ctx, db); err != nil {
-		return &aggregateStats, err
-	} else if appRoleAssignmentStats, err := azureAnalysis.AppRoleAssignments(ctx, db); err != nil {
-		return &aggregateStats, err
-	} else if hybridStats, err := hybrid.PostHybrid(ctx, db); err != nil {
-		return &aggregateStats, err
-	} else if pimRolesStats, err := azureAnalysis.CreateAZRoleApproverEdge(ctx, db); err != nil {
-		return &aggregateStats, err
-	} else {
-		aggregateStats.Merge(stats)
-		aggregateStats.Merge(userRoleStats)
-		aggregateStats.Merge(executeCommandStats)
-		aggregateStats.Merge(appRoleAssignmentStats)
-		aggregateStats.Merge(hybridStats)
-		aggregateStats.Merge(pimRolesStats)
-		return &aggregateStats, nil
 	}
+
+	if err = timeStage("UserRoleAssignments", func() error {
+		userRoleStats, err = azureAnalysis.UserRoleAssignments(ctx, db)
+		return err
+	}); err != nil {
+		return &aggregateStats, err
+	}
+
+	if err = timeStage("ExecuteCommand", func() error {
+		executeCommandStats, err = azureAnalysis.ExecuteCommand(ctx, db)
+		return err
+	}); err != nil {
+		return &aggregateStats, err
+	}
+
+	if err = timeStage("AppRoleAssignments", func() error {
+		appRoleAssignmentStats, err = azureAnalysis.AppRoleAssignments(ctx, db)
+		return err
+	}); err != nil {
+		return &aggregateStats, err
+	}
+
+	if err = timeStage("PostHybrid", func() error {
+		hybridStats, err = hybrid.PostHybrid(ctx, db)
+		return err
+	}); err != nil {
+		return &aggregateStats, err
+	}
+
+	if err = timeStage("CreateAZRoleApproverEdge", func() error {
+		pimRolesStats, err = azureAnalysis.CreateAZRoleApproverEdge(ctx, db)
+		return err
+	}); err != nil {
+		return &aggregateStats, err
+	}
+
+	aggregateStats.Merge(stats)
+	aggregateStats.Merge(userRoleStats)
+	aggregateStats.Merge(executeCommandStats)
+	aggregateStats.Merge(appRoleAssignmentStats)
+	aggregateStats.Merge(hybridStats)
+	aggregateStats.Merge(pimRolesStats)
+	return &aggregateStats, nil
 }

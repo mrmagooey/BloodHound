@@ -181,6 +181,13 @@ func runAnalysis(ctx context.Context, t *testing.T, db graph.Database) time.Dura
 	_, err := ad.Post(ctx, db, true, false, true, &counter)
 	require.NoError(t, err, "AD post-processing")
 
+	// Profile Azure analysis queries
+	kglitedawgs.EnableProfiling()
+	defer func() {
+		kglitedawgs.PrintReport()
+		kglitedawgs.DisableProfiling()
+	}()
+
 	_, err = azure.Post(ctx, db)
 	require.NoError(t, err, "Azure post-processing")
 

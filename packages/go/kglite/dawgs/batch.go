@@ -20,22 +20,33 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/specterops/bloodhound/packages/go/kglite"
 	"github.com/specterops/dawgs/graph"
 	neo4jquery "github.com/specterops/dawgs/query/neo4j"
 )
 
-const defaultBatchFlushSize = 500
+const defaultBatchFlushSize = 2000
+const defaultEdgeFlushSize = 5000
 
 // Batch implements graph.Batch using kglite with accumulated flush.
 // Operations are buffered and sent to kglite in a single CypherBatch
 // call when the buffer reaches flushSize or when Commit() is called.
+// Edge creation is batched separately using the bulk edge FFI for performance.
+type edgeKey struct {
+	src, dst uint64
+	typ      string
+}
+
 type Batch struct {
-	ctx       context.Context
-	driver    *Driver
-	pending   []kglite.BatchQuery
-	flushSize int
+	ctx          context.Context
+	driver       *Driver
+	pending      []kglite.BatchQuery
+	pendingEdges []kglite.EdgeSpec
+	flushSize    int
+	kindsWritten map[string]bool    // tracks objectids that already have __kinds set
+	edgesSeen    map[edgeKey]struct{} // cross-flush dedup: tracks all edges written in this batch lifecycle
 }
 
 func (b *Batch) WithGraph(_ graph.Graph) graph.Batch {
@@ -47,19 +58,69 @@ func (b *Batch) Commit() error {
 }
 
 func (b *Batch) flush() error {
-	if len(b.pending) == 0 {
-		return nil
+	// Flush bulk edge creates via direct FFI (no Cypher parsing)
+	if len(b.pendingEdges) > 0 {
+		b.pendingEdges = b.deduplicateEdges(b.pendingEdges)
+		if len(b.pendingEdges) > 0 {
+			start := time.Now()
+			if _, err := b.driver.kg.CreateEdgesBatch(b.pendingEdges, true); err != nil {
+				return err
+			}
+			if ProfilingEnabled() {
+				recordQuery(fmt.Sprintf("[batch-edges: %d edges]", len(b.pendingEdges)), time.Since(start))
+			}
+		}
+		b.pendingEdges = b.pendingEdges[:0]
 	}
-	_, err := b.driver.kg.CypherBatch(b.pending)
-	b.pending = b.pending[:0]
-	return err
+	// Flush remaining Cypher queries
+	if len(b.pending) > 0 {
+		start := time.Now()
+		if _, err := b.driver.kg.CypherBatch(b.pending); err != nil {
+			return err
+		}
+		if ProfilingEnabled() {
+			recordQuery(fmt.Sprintf("[batch-cypher: %d queries]", len(b.pending)), time.Since(start))
+		}
+		b.pending = b.pending[:0]
+	}
+	return nil
 }
 
 func (b *Batch) maybeFlush() error {
-	if len(b.pending) >= b.flushSize {
+	if len(b.pending) >= b.flushSize || len(b.pendingEdges) >= defaultEdgeFlushSize {
 		return b.flush()
 	}
 	return nil
+}
+
+// deduplicateEdges removes duplicate (src, dst, type) triples within this batch
+// and across previous flushes, keeping the last occurrence for within-batch dupes.
+func (b *Batch) deduplicateEdges(edges []kglite.EdgeSpec) []kglite.EdgeSpec {
+	if b.edgesSeen == nil {
+		b.edgesSeen = make(map[edgeKey]struct{}, len(edges))
+	}
+	// First pass: deduplicate within this batch (keep last occurrence)
+	localSeen := make(map[edgeKey]int, len(edges))
+	deduped := make([]kglite.EdgeSpec, 0, len(edges))
+	for _, e := range edges {
+		k := edgeKey{e.Src, e.Dst, e.Type}
+		if idx, ok := localSeen[k]; ok {
+			deduped[idx] = e
+		} else {
+			localSeen[k] = len(deduped)
+			deduped = append(deduped, e)
+		}
+	}
+	// Second pass: filter out edges already flushed in previous batches
+	result := deduped[:0]
+	for _, e := range deduped {
+		k := edgeKey{e.Src, e.Dst, e.Type}
+		if _, seen := b.edgesSeen[k]; !seen {
+			b.edgesSeen[k] = struct{}{}
+			result = append(result, e)
+		}
+	}
+	return result
 }
 
 func (b *Batch) enqueue(cypher string, params map[string]any) error {
@@ -129,7 +190,8 @@ func (b *Batch) CreateRelationship(relationship *graph.Relationship) error {
 	return b.CreateRelationshipByIDs(relationship.StartID, relationship.EndID, relationship.Kind, relationship.Properties)
 }
 
-// CreateRelationshipByIDs creates or updates a relationship between two nodes.
+// CreateRelationshipByIDs creates a relationship between two nodes.
+// Uses the bulk edge FFI which bypasses Cypher parsing for maximum throughput.
 func (b *Batch) CreateRelationshipByIDs(startNodeID, endNodeID graph.ID, kind graph.Kind, properties *graph.Properties) error {
 	if kind == nil {
 		return fmt.Errorf("kglite: CreateRelationshipByIDs: relationship kind is nil")
@@ -141,22 +203,19 @@ func (b *Batch) CreateRelationshipByIDs(startNodeID, endNodeID graph.ID, kind gr
 
 	var propsMap map[string]any
 	if properties != nil {
-		propsMap = properties.Map
-	} else {
-		propsMap = map[string]any{}
+		propsMap = make(map[string]any, len(properties.Map))
+		for k, v := range properties.Map {
+			propsMap[k] = scalarize(v)
+		}
 	}
 
-	baseParams := map[string]any{
-		"start_id": uint64(startNodeID),
-		"end_id":   uint64(endNodeID),
-	}
-
-	relPattern, relParams := propsPattern("rp_", propsMap)
-	cypher := fmt.Sprintf(
-		`MATCH (s) WHERE id(s) = $start_id MATCH (e) WHERE id(e) = $end_id MERGE (s)-[r:%s %s]->(e)`,
-		quoteIdent(kindStr), relPattern,
-	)
-	return b.enqueue(cypher, mergeParams(baseParams, relParams))
+	b.pendingEdges = append(b.pendingEdges, kglite.EdgeSpec{
+		Src:   uint64(startNodeID),
+		Dst:   uint64(endNodeID),
+		Type:  kindStr,
+		Props: propsMap,
+	})
+	return b.maybeFlush()
 }
 
 // DeleteRelationship deletes a relationship by ID.
@@ -272,9 +331,53 @@ func (b *Batch) UpdateRelationshipBy(update graph.RelationshipUpdate) error {
 	if update.Start != nil && update.Start.Properties != nil {
 		startProps = update.Start.Properties.Map
 	}
+	if update.Start != nil && len(update.Start.Kinds) > 1 {
+		if objID, ok := startIdentity["objectid"]; ok {
+			if key, ok := objID.(string); ok {
+				if b.kindsWritten == nil {
+					b.kindsWritten = make(map[string]bool, 1024)
+				}
+				if !b.kindsWritten[key] {
+					copied := make(map[string]any, len(startProps)+1)
+					for k, v := range startProps {
+						copied[k] = v
+					}
+					allKinds := make([]string, len(update.Start.Kinds))
+					for i, k := range update.Start.Kinds {
+						allKinds[i] = k.String()
+					}
+					copied["__kinds"] = allKinds
+					startProps = copied
+					b.kindsWritten[key] = true
+				}
+			}
+		}
+	}
 	endProps := make(map[string]any)
 	if update.End != nil && update.End.Properties != nil {
 		endProps = update.End.Properties.Map
+	}
+	if update.End != nil && len(update.End.Kinds) > 1 {
+		if objID, ok := endIdentity["objectid"]; ok {
+			if key, ok := objID.(string); ok {
+				if b.kindsWritten == nil {
+					b.kindsWritten = make(map[string]bool, 1024)
+				}
+				if !b.kindsWritten[key] {
+					copied := make(map[string]any, len(endProps)+1)
+					for k, v := range endProps {
+						copied[k] = v
+					}
+					allKinds := make([]string, len(update.End.Kinds))
+					for i, k := range update.End.Kinds {
+						allKinds[i] = k.String()
+					}
+					copied["__kinds"] = allKinds
+					endProps = copied
+					b.kindsWritten[key] = true
+				}
+			}
+		}
 	}
 
 	startPattern, startIdParams := propsPattern("si_", startIdentity)

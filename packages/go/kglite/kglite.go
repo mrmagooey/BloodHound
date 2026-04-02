@@ -162,6 +162,54 @@ func (kg *KnowledgeGraph) CypherBatch(queries []BatchQuery) ([]*CypherResult, er
 	return results, nil
 }
 
+// EdgeSpec describes a single edge to create in a bulk operation.
+type EdgeSpec struct {
+	Src   uint64                 `json:"src"`
+	Dst   uint64                 `json:"dst"`
+	Type  string                 `json:"type"`
+	Props map[string]interface{} `json:"props,omitempty"`
+}
+
+// CreateEdgesBatch bulk-creates edges by node index, bypassing Cypher entirely.
+// This is significantly faster than individual MATCH+MERGE Cypher queries because
+// it uses kglite's ConnectionBatchProcessor directly with NodeIndex values.
+// If skipExisting is true, duplicate-edge checks are skipped (use when edges are
+// known to be new, e.g. after DeleteTransitEdges).
+// Returns the number of edges created.
+func (kg *KnowledgeGraph) CreateEdgesBatch(edges []EdgeSpec, skipExisting bool) (int64, error) {
+	if len(edges) == 0 {
+		return 0, nil
+	}
+
+	b, err := json.Marshal(edges)
+	if err != nil {
+		return 0, fmt.Errorf("kglite: marshal edges: %w", err)
+	}
+	cjson := C.CString(string(b))
+	defer C.free(unsafe.Pointer(cjson))
+
+	skipFlag := C.int(0)
+	if skipExisting {
+		skipFlag = 1
+	}
+
+	var out *C.char
+	rc := C.kg_create_edges_batch(kg.h, cjson, skipFlag, &out)
+	if rc != 0 {
+		return 0, fmt.Errorf("kglite: kg_create_edges_batch: %s", lastError())
+	}
+	defer C.kg_free_string(out)
+
+	goJSON := C.GoString(out)
+	var result struct {
+		Created int64 `json:"created"`
+	}
+	if err := json.Unmarshal([]byte(goJSON), &result); err != nil {
+		return 0, fmt.Errorf("kglite: unmarshal edge result: %w", err)
+	}
+	return result.Created, nil
+}
+
 // CypherRows is a convenience wrapper that returns rows as []map[string]interface{}.
 func (kg *KnowledgeGraph) CypherRows(query string, params map[string]interface{}) ([]map[string]interface{}, error) {
 	result, err := kg.Cypher(query, params)

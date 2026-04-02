@@ -1,0 +1,3 @@
+[submodule "kglite-ffi"]
+	path = kglite-ffi
+	url = https://github.com/mrmagooey/kglite.git

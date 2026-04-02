@@ -115,6 +115,17 @@ func convertValue(v interface{}) interface{} {
 		return v
 	case []interface{}:
 		return v
+	case string:
+		// Check for path JSON encoded as string: {"__path": true, ...}
+		if len(typed) > 10 && typed[0] == '{' {
+			var m map[string]interface{}
+			if err := jsonUnmarshal([]byte(typed), &m); err == nil {
+				if _, isPath := m["__path"]; isPath {
+					return jsonToPath(m)
+				}
+			}
+		}
+		return v
 	default:
 		return v
 	}
@@ -199,6 +210,28 @@ func jsonToRelationship(m map[string]interface{}, edgeIdxRaw interface{}) *graph
 	return graph.NewRelationship(id, srcIdx, dstIdx, graph.AsProperties(props), kind)
 }
 
+func jsonToPath(m map[string]interface{}) *graph.Path {
+	path := &graph.Path{}
+
+	if nodesRaw, ok := m["nodes"].([]interface{}); ok {
+		for _, nRaw := range nodesRaw {
+			nodeIdx := graph.ID(toUint64(nRaw))
+			path.Nodes = append(path.Nodes, graph.NewNode(nodeIdx, graph.NewProperties()))
+		}
+	}
+
+	if edgesRaw, ok := m["edges"].([]interface{}); ok {
+		for _, eRaw := range edgesRaw {
+			if em, ok := eRaw.(map[string]interface{}); ok {
+				rel := jsonToRelationship(em, em["__edge_idx"])
+				path.Edges = append(path.Edges, rel)
+			}
+		}
+	}
+
+	return path
+}
+
 // convertJSONValue normalizes JSON-decoded values to expected Go types.
 func convertJSONValue(v interface{}) interface{} {
 	switch typed := v.(type) {
@@ -253,6 +286,12 @@ func mapValue(rawValue, target any) bool {
 	case *graph.Relationship:
 		if rel, ok := rawValue.(*graph.Relationship); ok {
 			*typedTarget = *rel
+			return true
+		}
+
+	case *graph.Path:
+		if p, ok := rawValue.(*graph.Path); ok {
+			*typedTarget = *p
 			return true
 		}
 

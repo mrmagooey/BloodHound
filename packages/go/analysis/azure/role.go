@@ -241,21 +241,124 @@ func TenantRoleAssignments(ctx context.Context, db graph.Database, tenant *graph
 					fetchedRoleAssignments.RoleAssignableGroupMembership.Or(members.IDBitmap())
 				}
 			}
-			return roles.KindSet().EachNode(func(node *graph.Node) error {
+
+			// Build role node ID -> roleTemplateID mapping and collect all role IDs
+			roleIDToTemplateID := make(map[graph.ID]string)
+			allRoleIDs := make([]graph.ID, 0, roles.Len())
+			for _, node := range roles {
 				if roleTemplateID, err := node.Properties.Get(azure.RoleTemplateID.String()).String(); err != nil {
 					if !graph.IsErrPropertyNotFound(err) {
 						return err
 					}
-				} else if members, err := RoleMembers(tx, tenant, roleTemplateID); err != nil {
-					if !graph.IsErrNotFound(err) {
-						return err
-					}
 				} else {
-					fetchedRoleAssignments.RoleMap[roleTemplateID] = members.IDBitmap()
+					roleIDToTemplateID[node.ID] = roleTemplateID
+					allRoleIDs = append(allRoleIDs, node.ID)
 				}
+			}
+
+			if len(allRoleIDs) == 0 {
 				roleAssignments = fetchedRoleAssignments
 				return nil
-			})
+			}
+
+			// Batch query 1: fetch all inbound MemberOf|HasRole relationships to all role nodes.
+			// This replaces the per-role TraversePaths loop (N+1 query pattern).
+			directMembersByRole := make(map[graph.ID][]graph.ID)  // roleNodeID -> []memberNodeID
+			roleAssignableGroupIDs := make(map[graph.ID]struct{}) // group IDs that are role-assignable
+			groupToRoles := make(map[graph.ID][]graph.ID)         // groupNodeID -> []roleNodeID
+
+			if err := ops.ForEachStartNode(tx.Relationships().Filterf(func() graph.Criteria {
+				return query.And(
+					query.KindIn(query.Relationship(), azure.MemberOf, azure.HasRole),
+					query.InIDs(query.EndID(), allRoleIDs...),
+				)
+			}), func(rel *graph.Relationship, startNode *graph.Node) error {
+				if startNode.Kinds.ContainsOneOf(azure.User, azure.ServicePrincipal) {
+					directMembersByRole[rel.EndID] = append(directMembersByRole[rel.EndID], startNode.ID)
+				} else if startNode.Kinds.ContainsOneOf(azure.Group) {
+					// Only expand role-assignable groups (matching roleDescentFilter semantics)
+					if isRoleAssignable, err := startNode.Properties.Get(azure.IsAssignableToRole.String()).Bool(); err == nil && isRoleAssignable {
+						roleAssignableGroupIDs[startNode.ID] = struct{}{}
+						groupToRoles[startNode.ID] = append(groupToRoles[startNode.ID], rel.EndID)
+					}
+				}
+				return nil
+			}); err != nil {
+				return err
+			}
+
+			// Batch query 2: expand role-assignable groups to find their User/ServicePrincipal members.
+			// Only one level of expansion (no group->group chains), matching roleDescentFilter.
+			groupMembersByGroup := make(map[graph.ID][]graph.ID) // groupNodeID -> []memberNodeID
+			if len(roleAssignableGroupIDs) > 0 {
+				groupIDSlice := make([]graph.ID, 0, len(roleAssignableGroupIDs))
+				for gid := range roleAssignableGroupIDs {
+					groupIDSlice = append(groupIDSlice, gid)
+				}
+
+				if err := ops.ForEachStartNode(tx.Relationships().Filterf(func() graph.Criteria {
+					return query.And(
+						query.KindIn(query.Relationship(), azure.MemberOf, azure.HasRole),
+						query.InIDs(query.EndID(), groupIDSlice...),
+					)
+				}), func(rel *graph.Relationship, startNode *graph.Node) error {
+					// Only expand users and service principals, not groups (no group->group chains)
+					if startNode.Kinds.ContainsOneOf(azure.User, azure.ServicePrincipal) {
+						groupMembersByGroup[rel.EndID] = append(groupMembersByGroup[rel.EndID], startNode.ID)
+					}
+					return nil
+				}); err != nil {
+					return err
+				}
+			}
+
+			// Assemble per-roleTemplateID bitmaps from the batch query results
+			roleIDBitmap := cardinality.NewBitmap64()
+			for _, id := range allRoleIDs {
+				roleIDBitmap.Add(id.Uint64())
+			}
+
+			for _, roleNodeID := range allRoleIDs {
+				templateID, ok := roleIDToTemplateID[roleNodeID]
+				if !ok {
+					continue
+				}
+
+				bm, exists := fetchedRoleAssignments.RoleMap[templateID]
+				if !exists {
+					bm = cardinality.NewBitmap64()
+					fetchedRoleAssignments.RoleMap[templateID] = bm
+				}
+
+				// Add direct user/SP members
+				for _, memberID := range directMembersByRole[roleNodeID] {
+					bm.Add(memberID.Uint64())
+				}
+
+				// Add indirect members through role-assignable groups
+				for groupID, roleNodeIDs := range groupToRoles {
+					for _, rid := range roleNodeIDs {
+						if rid == roleNodeID {
+							// Add group itself as a member (matching original roleMembers behavior)
+							bm.Add(groupID.Uint64())
+							// Add the group's user/SP members
+							for _, memberID := range groupMembersByGroup[groupID] {
+								bm.Add(memberID.Uint64())
+							}
+							break
+						}
+					}
+				}
+
+				// Remove role nodes from the member set (matching RoleMembers behavior)
+				roleIDBitmap.Each(func(id uint64) bool {
+					bm.Remove(id)
+					return true
+				})
+			}
+
+			roleAssignments = fetchedRoleAssignments
+			return nil
 		}
 	})
 }
