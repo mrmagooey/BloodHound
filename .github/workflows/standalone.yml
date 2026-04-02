@@ -52,7 +52,7 @@ jobs:
         run: cd kglite-ffi && cargo test --no-default-features --features ffi
 
       - name: Run Go e2e tests (kglite)
-        run: go test -v -tags e2e -timeout 30m -run TestAzureAttackPathEdges ./cmd/api/src/test/e2e/
+        run: go test -v -tags e2e -timeout 30m ./cmd/api/src/test/e2e/
 
   build-binary:
     name: Build Binary

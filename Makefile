@@ -1,4 +1,4 @@
-.PHONY: init kglite build test test-rust test-comparison test-adminer docker clean
+.PHONY: init kglite build test test-quick test-rust test-comparison test-adminer docker clean
 
 ## Initialize kglite submodule (run once after clone)
 init:
@@ -14,8 +14,12 @@ kglite-ffi/target/release/libkglite.a: kglite-ffi/src/**/*.rs kglite-ffi/Cargo.t
 build: kglite
 	go build -tags standalone -o bloodhound-standalone ./cmd/api/src/cmd/bhapi
 
-## Run kglite-only e2e tests
+## Run all non-comparison e2e tests
 test: kglite
+	go test -v -tags e2e -timeout 30m ./cmd/api/src/test/e2e/
+
+## Run only the Azure attack path analysis test (quick smoke test)
+test-quick: kglite
 	go test -v -tags e2e -timeout 30m -run TestAzureAttackPathEdges ./cmd/api/src/test/e2e/
 
 ## Run kglite Rust unit tests

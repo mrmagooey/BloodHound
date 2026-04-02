@@ -466,6 +466,7 @@ go-test-results.json
 bhapi
 ingestor
 bloodhound-standalone
+data/
 
 # Claude Code
 .claude/
