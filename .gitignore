@@ -461,3 +461,7 @@ go.work*
 allure-results
 allure-report
 go-test-results.json
+
+# standalone build artifacts
+bhapi
+ingestor
