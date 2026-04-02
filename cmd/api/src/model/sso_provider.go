@@ -42,7 +42,7 @@ type SSOProvider struct {
 	OIDCProvider *OIDCProvider `json:"oidc_provider,omitempty" gorm:"foreignKey:SSOProviderID"`
 	SAMLProvider *SAMLProvider `json:"saml_provider,omitempty" gorm:"foreignKey:SSOProviderID"`
 
-	Config SSOProviderConfig `json:"config" gorm:"type:jsonb column:config"`
+	Config SSOProviderConfig `json:"config" gorm:"type:text;column:config"`
 
 	Serial
 }
