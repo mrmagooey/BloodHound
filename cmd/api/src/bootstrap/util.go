@@ -73,11 +73,6 @@ func EnsureServerDirectories(cfg config.Configuration) error {
 	return nil
 }
 
-// DefaultConfigFilePath returns the location of the config file
-func DefaultConfigFilePath() string {
-	return "/etc/bhapi/bhapi.json"
-}
-
 const kgliteDriverName = "kglite"
 
 func ConnectGraph(ctx context.Context, cfg config.Configuration) (*graph.DatabaseSwitch, error) {
