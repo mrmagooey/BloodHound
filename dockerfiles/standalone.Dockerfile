@@ -27,7 +27,7 @@ COPY --from=rust-builder /build/kglite-ffi/target/release/libkglite.a ./kglite-f
 
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
-    go build -o /bloodhound-standalone ./cmd/api/src/cmd/bhapi
+    go build -tags standalone -o /bloodhound-standalone ./cmd/api/src/cmd/bhapi
 
 ########
 # Runtime image

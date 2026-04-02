@@ -86,7 +86,7 @@ jobs:
       - name: Build standalone binary
         env:
           CGO_ENABLED: "1"
-        run: go build -o bloodhound-standalone ./cmd/api/src/cmd/bhapi
+        run: go build -tags standalone -o bloodhound-standalone ./cmd/api/src/cmd/bhapi
 
       - name: Upload binary artifact
         uses: actions/upload-artifact@v4

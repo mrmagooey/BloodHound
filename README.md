@@ -14,22 +14,47 @@ BloodHound CE is created and maintained by the [SpecterOps](https://specterops.i
 
 ## Standalone Mode (kglite + SQLite)
 
-The `standalone` branch replaces Neo4j and PostgreSQL with embedded alternatives — [kglite](https://github.com/mrmagooey/kglite) (a Rust graph engine accessed via CGO/FFI) and SQLite — enabling BloodHound to run as a single self-contained binary with zero external service dependencies.
+The `standalone` branch replaces Neo4j and PostgreSQL with embedded alternatives — [kglite](https://github.com/mrmagooey/kglite) (a Rust graph engine accessed via CGO/FFI) and SQLite — enabling BloodHound to run as a single self-contained binary with zero external service dependencies. The kglite static library adds approximately 18 MB to the final binary. This eliminates 2.9 GiB of RAM (Neo4j JVM), 8.2 GB of disk (Neo4j + PostgreSQL containers), and the 15-second JVM startup delay. All 63 core BloodHound Cypher queries produce identical results to Neo4j.
 
-### Quick Start
+### Building from Source
+
+Prerequisites: [Rust toolchain](https://rustup.rs/) (stable), [Go](https://go.dev/) 1.25+, a C compiler (for CGO).
 
 ```bash
-# Build the kglite FFI library
+# Clone with submodules (kglite lives at kglite-ffi/)
+git clone --recursive https://github.com/SpecterOps/BloodHound.git
+cd BloodHound && git checkout standalone
+
+# Build the kglite FFI static library
 cd kglite-ffi && cargo build --release --no-default-features --features ffi && cd ..
 
-# Build and run the ingestor
-CGO_ENABLED=1 go build -o ingestor ./cmd/api/src/cmd/ingestor
-./ingestor --file path/to/sharphound_data.zip --graph-path bloodhound.kgl
+# Build the standalone binary
+CGO_ENABLED=1 go build -tags standalone -o bhapi ./cmd/api/src/cmd/bhapi
+
+# Run
+./bhapi -configfile dockerfiles/configs/standalone.config.json
 ```
+
+### Docker
+
+```bash
+# Build the container image
+docker build -f dockerfiles/standalone.Dockerfile -t bloodhound-standalone .
+
+# Run — port 8080, persistent graph data in a volume
+docker run -p 8080:8080 -v bh-data:/opt/bloodhound/work bloodhound-standalone
+```
+
+The container exposes port 8080 and stores its graph database under `/opt/bloodhound/work`.
 
 ### Performance: kglite vs Neo4j
 
 Measured against the BloodHound sample datasets using the e2e comparison test suite.
+
+**Summary:**
+- AD dataset: **4.2x** faster end-to-end (ingest + analysis) vs Neo4j
+- Azure dataset: **2.5x** faster analysis, **1.6x** faster total
+- Attack path queries: **67-524x** faster (in-memory, no network overhead)
 
 #### AD Dataset (1,519 nodes, 16,367 relationships)
 
@@ -62,13 +87,26 @@ Per-query highlights (kglite vs Neo4j):
 ### Running the Tests
 
 ```bash
-# E2e regression tests (no external services needed)
+# kglite-only e2e tests (no external services needed)
+CGO_ENABLED=1 go test -v -tags e2e -timeout 30m \
+  -run TestAzureAttackPathEdges ./cmd/api/src/test/e2e/
+
+# Full e2e regression suite
 CGO_ENABLED=1 go test -v -tags e2e -timeout 30m ./cmd/api/src/test/e2e/
 
 # Performance comparison against Neo4j (requires Docker)
 docker compose -f docker-compose.testing.yml up -d
-CGO_ENABLED=1 go test -v -tags "comparison e2e" -timeout 30m ./cmd/api/src/test/e2e/
+CGO_ENABLED=1 go test -v -tags "comparison e2e" -timeout 30m \
+  -run TestCompareAzure ./cmd/api/src/test/e2e/
 docker compose -f docker-compose.testing.yml down
+```
+
+### kglite Submodule
+
+The embedded graph database source lives at `kglite-ffi/` as a git submodule from [github.com/mrmagooey/kglite](https://github.com/mrmagooey/kglite). After cloning, ensure submodules are initialized:
+
+```bash
+git submodule update --init --recursive
 ```
 
 ## Running BloodHound Community Edition

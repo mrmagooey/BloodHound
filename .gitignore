@@ -465,6 +465,7 @@ go-test-results.json
 # standalone build artifacts
 bhapi
 ingestor
+bloodhound-standalone
 
 # Claude Code
 .claude/
