@@ -26,6 +26,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"regexp"
 	"slices"
 	"sort"
 	"strconv"
@@ -73,6 +74,11 @@ var (
 	ErrUnsupportedDataType   = errors.New("unsupported result type for this query")
 	ErrGraphUnsupported      = errors.New("type 'graph' is not supported for this endpoint")
 	ErrCypherQueryTooComplex = errors.New("cypher query is too complex and is likely to result in poor or unstable database performance")
+
+	// reCypherCaseKeyword matches Cypher CASE keyword as a whole word (case-insensitive).
+	// Queries containing CASE are passed directly to the underlying graph engine (kglite),
+	// which handles CASE natively, bypassing the dawgs frontend that does not yet support it.
+	reCypherCaseKeyword = regexp.MustCompile(`(?i)\bCASE\b`)
 )
 
 type EntityQueryParameters struct {
@@ -435,6 +441,16 @@ type PreparedQuery struct {
 }
 
 func (s *GraphQuery) PrepareCypherQuery(rawCypher string, queryComplexityLimit int64) (PreparedQuery, error) {
+	// The dawgs frontend does not support CASE expressions, but the kglite graph engine
+	// handles them natively. When a CASE keyword is detected we bypass the AST-based
+	// frontend and return a PreparedQuery that forwards the raw Cypher unchanged.
+	if reCypherCaseKeyword.MatchString(rawCypher) {
+		return PreparedQuery{
+			query:         strings.TrimSpace(rawCypher),
+			StrippedQuery: strings.TrimSpace(rawCypher),
+		}, nil
+	}
+
 	var (
 		cypherFilters = []frontend.Visitor{
 			&frontend.ExplicitProcedureInvocationFilter{},

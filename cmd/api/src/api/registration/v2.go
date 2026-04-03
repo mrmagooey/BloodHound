@@ -24,6 +24,7 @@ import (
 
 	"github.com/specterops/bloodhound/cmd/api/src/api"
 	"github.com/specterops/bloodhound/cmd/api/src/api/middleware"
+	"github.com/specterops/bloodhound/cmd/api/src/api/neo4jcompat"
 	"github.com/specterops/bloodhound/cmd/api/src/api/router"
 	v2 "github.com/specterops/bloodhound/cmd/api/src/api/v2"
 	authapi "github.com/specterops/bloodhound/cmd/api/src/api/v2/auth"
@@ -374,4 +375,26 @@ func NewV2API(resources v2.Resources, routerInst *router.Router) {
 		// Graph Schema API
 		routerInst.GET("/api/v2/graph-schema/edges", resources.ListEdgeTypes).CheckFeatureFlag(resources.DB, appcfg.FeatureOpenGraphExtensionManagement).RequirePermissions(permissions.GraphDBRead),
 	)
+
+	// Neo4j HTTP API compatibility layer
+	registerNeo4jCompat(resources, routerInst)
+}
+
+func registerNeo4jCompat(resources v2.Resources, routerInst *router.Router) {
+	neo4jResource := neo4jcompat.NewNeo4jResource(resources.GraphQuery, resources.DB)
+
+	// Auto-commit transaction (run and commit in one request)
+	routerInst.POST("/db/{databaseName}/tx/commit", neo4jResource.TransactionCommit)
+
+	// Begin a new transaction
+	routerInst.POST("/db/{databaseName}/tx", neo4jResource.TransactionBegin)
+
+	// Run statements in an open transaction
+	routerInst.POST("/db/{databaseName}/tx/{txId:[0-9]+}", neo4jResource.TransactionRun)
+
+	// Commit an open transaction
+	routerInst.POST("/db/{databaseName}/tx/{txId:[0-9]+}/commit", neo4jResource.TransactionCommitOpen)
+
+	// Rollback an open transaction
+	routerInst.DELETE("/db/{databaseName}/tx/{txId:[0-9]+}", neo4jResource.TransactionRollback)
 }

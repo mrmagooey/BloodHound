@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/specterops/bloodhound/cmd/api/src/api"
+	"github.com/specterops/bloodhound/cmd/api/src/api/bolt"
 	"github.com/specterops/bloodhound/cmd/api/src/api/middleware"
 	"github.com/specterops/bloodhound/cmd/api/src/api/registration"
 	"github.com/specterops/bloodhound/cmd/api/src/api/router"
@@ -195,8 +196,12 @@ func Entrypoint(ctx context.Context, cfg config.Configuration, connections boots
 			}
 		}
 
+		boltAddr := fmt.Sprintf(":%d", bolt.DefaultBoltPort)
+		boltDaemon := bolt.NewDaemon(boltAddr, graphQuery, connections.RDMS)
+
 		return []daemons.Daemon{
 			bhapi.NewDaemon(cfg, routerInst.Handler()),
+			boltDaemon,
 			gc.NewDataPruningDaemon(connections.RDMS),
 			cl,
 			datapipeDaemon,
