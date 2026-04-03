@@ -170,6 +170,11 @@ type Configuration struct {
 	EnableUserAnalytics             bool                      `json:"enable_user_analytics"`
 	ForceDownloadEmbeddedCollectors bool                      `json:"force_download_embedded_collectors"`
 	EnableAuditLogStdout            bool                      `json:"enable_audit_log_stdout"`
+
+	// StandaloneUsername and StandalonePassword are used only in standalone (SQLite) mode
+	// to enforce HTTP Basic Auth. If both are empty, auth is disabled in standalone mode.
+	StandaloneUsername string `json:"standalone_username"`
+	StandalonePassword string `json:"standalone_password"`
 }
 
 func (s Configuration) TempDirectory() string {

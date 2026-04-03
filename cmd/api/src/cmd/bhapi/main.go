@@ -42,8 +42,11 @@ func printVersion() {
 
 func main() {
 	var (
-		configFilePath string
-		versionFlag    bool
+		configFilePath  string
+		versionFlag     bool
+		standaloneUser  string
+		standalonePass  string
+		sqlitePath      string
 	)
 
 	// Eagerly set logging format if valid environment variable is set
@@ -59,6 +62,9 @@ func main() {
 
 	flag.BoolVar(&versionFlag, "version", false, "Get binary version.")
 	flag.StringVar(&configFilePath, "configfile", bootstrap.DefaultConfigFilePath(), "Configuration file to load.")
+	flag.StringVar(&sqlitePath, "sqlite-path", "", "Path to SQLite database file. Enables standalone mode (overrides config file).")
+	flag.StringVar(&standaloneUser, "auth-user", "", "Username for standalone mode HTTP Basic Auth (overrides BLOODHOUND_USERNAME env var).")
+	flag.StringVar(&standalonePass, "auth-pass", "", "Password for standalone mode HTTP Basic Auth (overrides BLOODHOUND_PASSWORD env var).")
 	flag.Parse()
 
 	if versionFlag {
@@ -69,6 +75,21 @@ func main() {
 	if err != nil {
 		slog.Error(fmt.Sprintf("Unable to read configuration %s: %v", configFilePath, err))
 		os.Exit(1)
+	}
+
+	// Apply standalone credential overrides: CLI flags take priority, then env vars, then config file.
+	if sqlitePath != "" {
+		cfg.SQLitePath = sqlitePath
+	}
+	if standaloneUser != "" {
+		cfg.StandaloneUsername = standaloneUser
+	} else if envUser := os.Getenv("BLOODHOUND_USERNAME"); envUser != "" && cfg.StandaloneUsername == "" {
+		cfg.StandaloneUsername = envUser
+	}
+	if standalonePass != "" {
+		cfg.StandalonePassword = standalonePass
+	} else if envPass := os.Getenv("BLOODHOUND_PASSWORD"); envPass != "" && cfg.StandalonePassword == "" {
+		cfg.StandalonePassword = envPass
 	}
 
 	// Initialize logging
