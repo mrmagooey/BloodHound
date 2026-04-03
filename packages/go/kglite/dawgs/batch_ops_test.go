@@ -710,3 +710,44 @@ func TestBatchAllNodesAccessibleAfterCommit(t *testing.T) {
 		}
 	}
 }
+
+// ─── Batch.UpdateRelationshipBy with multi-kind nodes ───────────────────────
+
+func TestBatchUpdateRelationshipByMultiKind(t *testing.T) {
+	db := openTestDriver(t)
+
+	extraKind := graph.StringKind("ExtraKind")
+	err := db.BatchOperation(context.Background(), func(batch graph.Batch) error {
+		start := graph.NewNode(0,
+			graph.AsProperties(map[string]any{"objectid": "multi-src", "name": "source"}),
+			testNodeKind, extraKind,
+		)
+		end := graph.NewNode(0,
+			graph.AsProperties(map[string]any{"objectid": "multi-dst", "name": "destination"}),
+			testNodeKind, extraKind,
+		)
+		rel := graph.NewRelationship(0, 0, 0, graph.AsProperties(map[string]any{"link": "test"}), testEdgeKind)
+		return batch.UpdateRelationshipBy(graph.RelationshipUpdate{
+			Relationship:            rel,
+			Start:                   start,
+			StartIdentityKind:       testNodeKind,
+			StartIdentityProperties: []string{"objectid"},
+			End:                     end,
+			EndIdentityKind:         testNodeKind,
+			EndIdentityProperties:   []string{"objectid"},
+		})
+	})
+	if err != nil {
+		t.Fatalf("UpdateRelationshipBy with multi-kind: %v", err)
+	}
+
+	// Should have created 2 multi-kind nodes and 1 edge
+	nodeCount := countNodes(t, db)
+	if nodeCount != 2 {
+		t.Errorf("expected 2 nodes from UpdateRelationshipBy, got %d", nodeCount)
+	}
+	edgeCount := countRelationships(t, db)
+	if edgeCount != 1 {
+		t.Errorf("expected 1 edge from UpdateRelationshipBy, got %d", edgeCount)
+	}
+}

@@ -871,3 +871,14 @@ func TestEmptyResultBehavior(t *testing.T) {
 		t.Fatal("emptyResult.Scan() should return an error")
 	}
 }
+
+func TestEmptyResultClose(t *testing.T) {
+	r := emptyResult{}
+	r.Close() // must not panic
+}
+
+func TestEmptyResultMapper(t *testing.T) {
+	r := emptyResult{}
+	// Just verify Mapper() returns without panicking; ValueMapper is a struct (not a pointer)
+	_ = r.Mapper()
+}

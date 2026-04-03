@@ -833,3 +833,185 @@ func TestNodeStructure_ContainsKinds(t *testing.T) {
 	assert.NotNil(t, nodeDetails.Kinds)
 	assert.Contains(t, nodeDetails.Kinds, azschema.User.String())
 }
+
+// ========================================================================
+// Application Entity Details Tests
+// ========================================================================
+
+func TestApplicationEntityDetails_WithServicePrincipal(t *testing.T) {
+	g := seedAzureGraph(t)
+	db := g.DB
+
+	app := g.Application
+	sp := g.ServicePrincipals[0]
+
+	// Create RunsAs relationship between app and service principal
+	require.NoError(t, db.WriteTransaction(context.Background(), func(tx graph.Transaction) error {
+		_, err := tx.CreateRelationshipByIDs(app.ID, sp.ID, azschema.RunsAs, nil)
+		return err
+	}))
+
+	validPrimaryKinds := graphschema.ValidPrimaryKinds{
+		azschema.App: true,
+	}
+
+	// Use the actual object ID from the seeded graph
+	details, err := azure.ApplicationEntityDetails(context.Background(), db, validPrimaryKinds, "app-0001", false)
+	require.NoError(t, err)
+	require.NotNil(t, details.Node)
+	// Service principal ID should be populated
+	require.NotEmpty(t, details.Properties)
+}
+
+func TestApplicationEntityDetails_WithHydrateCounts(t *testing.T) {
+	g := seedAzureGraph(t)
+	db := g.DB
+
+	app := g.Application
+	sp := g.ServicePrincipals[0]
+
+	// Wire up service principal to app
+	require.NoError(t, db.WriteTransaction(context.Background(), func(tx graph.Transaction) error {
+		_, err := tx.CreateRelationshipByIDs(app.ID, sp.ID, azschema.RunsAs, nil)
+		return err
+	}))
+
+	validPrimaryKinds := graphschema.ValidPrimaryKinds{
+		azschema.App: true,
+	}
+
+	// Use the actual object ID from the seeded graph
+	details, err := azure.ApplicationEntityDetails(context.Background(), db, validPrimaryKinds, "app-0001", true)
+	require.NoError(t, err)
+	require.NotNil(t, details.Node)
+}
+
+// ========================================================================
+// Device Entity Details Tests
+// ========================================================================
+
+func TestDeviceEntityDetails_WithProperties(t *testing.T) {
+	db := openTestGraph(t)
+
+	device := createDevice(t, db, "device-0001", "Test Device")
+
+	// Set device properties
+	require.NoError(t, db.WriteTransaction(context.Background(), func(tx graph.Transaction) error {
+		device.Properties.Set("operatingsystem", "Windows 10")
+		device.Properties.Set("operatingsystemversion", "19041")
+		return tx.UpdateNode(device)
+	}))
+
+	validPrimaryKinds := graphschema.ValidPrimaryKinds{
+		azschema.Device: true,
+	}
+
+	details, err := azure.DeviceEntityDetails(context.Background(), db, validPrimaryKinds, "device-0001", false)
+	require.NoError(t, err)
+	require.NotNil(t, details.Node)
+	assert.GreaterOrEqual(t, details.InboundObjectControl, 0)
+}
+
+// ========================================================================
+// Management Group Tests
+// ========================================================================
+
+func TestManagementGroupEntityDetails(t *testing.T) {
+	db := openTestGraph(t)
+
+	_ = createManagementGroup(t, db, "mg-0001", "Test Management Group")
+
+	validPrimaryKinds := graphschema.ValidPrimaryKinds{
+		azschema.ManagementGroup: true,
+	}
+
+	details, err := azure.ManagementGroupEntityDetails(context.Background(), db, validPrimaryKinds, "mg-0001", false)
+	require.NoError(t, err)
+	require.NotNil(t, details.Node)
+}
+
+// ========================================================================
+// VM Entity Details Tests
+// ========================================================================
+
+func TestVMEntityDetails_WithContains(t *testing.T) {
+	db := openTestGraph(t)
+	tenant := createTenant(t, db, "test-tenant-vm", "Test Tenant VM")
+	vm := createVM(t, db, "vm-0001", "Test VM")
+
+	createRel(t, db, tenant, vm, azschema.Contains)
+
+	validPrimaryKinds := graphschema.ValidPrimaryKinds{
+		azschema.VM: true,
+	}
+
+	details, err := azure.VMEntityDetails(context.Background(), db, validPrimaryKinds, "vm-0001", false)
+	require.NoError(t, err)
+	require.NotNil(t, details.Node)
+	assert.GreaterOrEqual(t, details.InboundObjectControl, 0)
+}
+
+// ========================================================================
+// KeyVault Entity Details Tests
+// ========================================================================
+
+func TestKeyVaultEntityDetails_WithCounts(t *testing.T) {
+	db := openTestGraph(t)
+	tenant := createTenant(t, db, "test-tenant-kv", "Test Tenant KV")
+	kv := createKeyVault(t, db, "kv-0001", "Test KeyVault")
+
+	createRel(t, db, tenant, kv, azschema.Contains)
+
+	validPrimaryKinds := graphschema.ValidPrimaryKinds{
+		azschema.KeyVault: true,
+	}
+
+	details, err := azure.KeyVaultEntityDetails(context.Background(), db, validPrimaryKinds, "kv-0001", true)
+	require.NoError(t, err)
+	require.NotNil(t, details.Node)
+	assert.GreaterOrEqual(t, details.InboundObjectControl, 0)
+}
+
+// ========================================================================
+// BaseEntityDetails Tests
+// ========================================================================
+
+func TestBaseEntityDetails_WithoutHydrate(t *testing.T) {
+	g := seedAzureGraph(t)
+	db := g.DB
+
+	validPrimaryKinds := graphschema.ValidPrimaryKinds{
+		azschema.User: true,
+	}
+
+	details, err := azure.BaseEntityDetails(context.Background(), db, validPrimaryKinds, "user-0001", false)
+	require.NoError(t, err)
+	require.NotNil(t, details.Node)
+	assert.Equal(t, 0, details.OutboundObjectControl)
+}
+
+func TestBaseEntityDetails_WithHydrate(t *testing.T) {
+	g := seedAzureGraph(t)
+	db := g.DB
+
+	validPrimaryKinds := graphschema.ValidPrimaryKinds{
+		azschema.User: true,
+	}
+
+	details, err := azure.BaseEntityDetails(context.Background(), db, validPrimaryKinds, "user-0001", true)
+	require.NoError(t, err)
+	require.NotNil(t, details.Node)
+	assert.GreaterOrEqual(t, details.OutboundObjectControl, 0)
+}
+
+func TestBaseEntityDetails_NonExistent(t *testing.T) {
+	db := openTestGraph(t)
+
+	validPrimaryKinds := graphschema.ValidPrimaryKinds{
+		azschema.User: true,
+	}
+
+	_, err := azure.BaseEntityDetails(context.Background(), db, validPrimaryKinds, "nonexistent-user", false)
+	require.Error(t, err)
+}
+

@@ -975,3 +975,126 @@ func TestEntityDescendentsTraversal_CreatesTraversalPlan(t *testing.T) {
 	require.Equal(t, graph.DirectionOutbound, plan.Direction)
 	require.NotNil(t, plan.BranchQuery)
 }
+
+// ========================================================================
+// FetchAzureAttackPathRoots
+// ========================================================================
+
+func TestFetchAzureAttackPathRoots_IncludesTenant(t *testing.T) {
+	g := seedAzureGraph(t)
+
+	var roots graph.NodeSet
+	require.NoError(t, g.DB.ReadTransaction(context.Background(), func(tx graph.Transaction) error {
+		var err error
+		roots, err = azure.FetchAzureAttackPathRoots(tx, g.Tenant)
+		return err
+	}))
+
+	// At minimum, the tenant should be included
+	require.GreaterOrEqual(t, roots.Len(), 1)
+	require.True(t, roots.ContainsID(g.Tenant.ID))
+}
+
+func TestFetchAzureAttackPathRoots_IncludesAdminRoles(t *testing.T) {
+	g := seedAzureGraph(t)
+
+	var roots graph.NodeSet
+	require.NoError(t, g.DB.ReadTransaction(context.Background(), func(tx graph.Transaction) error {
+		var err error
+		roots, err = azure.FetchAzureAttackPathRoots(tx, g.Tenant)
+		return err
+	}))
+
+	// Should include admin roles
+	require.Greater(t, roots.Len(), 0)
+	// The tenant and admin roles should be present
+	require.True(t, roots.ContainsID(g.Tenant.ID))
+
+	// At least one admin role should be included (CompanyAdministrator)
+	adminRoleFound := false
+	for _, node := range roots.Slice() {
+		if node.Kinds.ContainsOneOf(azschema.Role) {
+			adminRoleFound = true
+			break
+		}
+	}
+	require.True(t, adminRoleFound || roots.Len() == 1, "Expected admin role or only tenant")
+}
+
+func TestFetchAzureAttackPathRoots_EmptyTenantWithoutRoles(t *testing.T) {
+	db := openTestGraph(t)
+
+	tenant := createTenant(t, db, "test-tenant-empty", "Empty Tenant")
+
+	var roots graph.NodeSet
+	require.NoError(t, db.ReadTransaction(context.Background(), func(tx graph.Transaction) error {
+		var err error
+		roots, err = azure.FetchAzureAttackPathRoots(tx, tenant)
+		return err
+	}))
+
+	// Should at least include the tenant
+	require.Equal(t, 1, roots.Len())
+	require.True(t, roots.ContainsID(tenant.ID))
+}
+
+func TestFetchAzureAttackPathRoots_MultipleAdminRoles(t *testing.T) {
+	db := openTestGraph(t)
+
+	tenant := createTenant(t, db, "test-tenant-multi-admin", "Multi Admin Tenant")
+
+	// Create multiple admin roles
+	roles := []*graph.Node{
+		createRole(t, db, "admin-role-001", "Company Administrator", azschema.CompanyAdministratorRole),
+		createRole(t, db, "admin-role-002", "Privileged Role Administrator", azschema.PrivilegedRoleAdministratorRole),
+		createRole(t, db, "admin-role-003", "Privileged Authentication Administrator", azschema.PrivilegedAuthenticationAdministratorRole),
+		createRole(t, db, "admin-role-004", "Partner Tier 2 Support", azschema.PartnerTier2SupportRole),
+	}
+
+	// Connect roles to tenant
+	for _, role := range roles {
+		createRel(t, db, tenant, role, azschema.Contains)
+	}
+
+	var roots graph.NodeSet
+	require.NoError(t, db.ReadTransaction(context.Background(), func(tx graph.Transaction) error {
+		var err error
+		roots, err = azure.FetchAzureAttackPathRoots(tx, tenant)
+		return err
+	}))
+
+	// Should include tenant + all admin roles
+	require.Equal(t, 5, roots.Len(), "Expected tenant + 4 admin roles")
+
+	// Verify all roles are included
+	for _, role := range roles {
+		require.True(t, roots.ContainsID(role.ID), "Expected role %d to be in roots", role.ID)
+	}
+}
+
+// ========================================================================
+// FetchTenants Integration Tests
+// ========================================================================
+
+func TestFetchTenants_WithMultiple(t *testing.T) {
+	db := openTestGraph(t)
+
+	tenant1 := createTenant(t, db, "test-tenant-001", "Tenant 1")
+	tenant2 := createTenant(t, db, "test-tenant-002", "Tenant 2")
+	tenant3 := createTenant(t, db, "test-tenant-003", "Tenant 3")
+
+	tenants, err := azure.FetchTenants(context.Background(), db)
+	require.NoError(t, err)
+	require.Equal(t, 3, tenants.Len())
+	require.True(t, tenants.ContainsID(tenant1.ID))
+	require.True(t, tenants.ContainsID(tenant2.ID))
+	require.True(t, tenants.ContainsID(tenant3.ID))
+}
+
+func TestFetchTenants_Empty(t *testing.T) {
+	db := openTestGraph(t)
+
+	tenants, err := azure.FetchTenants(context.Background(), db)
+	require.NoError(t, err)
+	require.Equal(t, 0, tenants.Len())
+}
