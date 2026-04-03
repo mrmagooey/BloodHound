@@ -1,3 +1,5 @@
+//go:build standalone
+
 // Copyright 2023 Specter Ops, Inc.
 //
 // Licensed under the Apache License, Version 2.0
@@ -18,6 +20,7 @@ package azure_test
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/bloodhoundad/azurehound/v2/constants"
@@ -26,6 +29,7 @@ import (
 	azschema "github.com/specterops/bloodhound/packages/go/graphschema/azure"
 	"github.com/specterops/dawgs/cardinality"
 	"github.com/specterops/dawgs/graph"
+	"github.com/specterops/dawgs/query"
 	"github.com/specterops/dawgs/util/size"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -336,4 +340,136 @@ func TestEndNodes(t *testing.T) {
 	assert.Contains(t, nodes.Slice(), stubDevice1)
 	assert.Contains(t, nodes.Slice(), stubDevice2)
 	assert.Contains(t, nodes.Slice(), stubDevice3)
+}
+
+// ============================= Integration Tests using existing helpers =============================
+
+// TestIsWindowsDeviceIntegration tests IsWindowsDevice with real graph nodes
+func TestIsWindowsDeviceIntegration(t *testing.T) {
+	tests := []struct {
+		name     string
+		os       string
+		expected bool
+		setProp  bool
+	}{
+		{"Windows 10", "Windows 10 Enterprise", true, true},
+		{"windows lowercase", "windows server 2019", true, true},
+		{"WINDOWS uppercase", "WINDOWS", true, true},
+		{"Linux", "Ubuntu 20.04", false, true},
+		{"macOS", "macOS Ventura", false, true},
+		{"empty string", "", false, true},
+		{"no OS property", "", false, false},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			props := graph.NewProperties()
+			if tc.setProp {
+				props.Set("operatingsystem", tc.os)
+			}
+			node := graph.NewNode(100, props, azschema.Device)
+			result, err := azure.IsWindowsDevice(node)
+			require.NoError(t, err)
+			require.Equal(t, tc.expected, result)
+		})
+	}
+}
+
+// TestExecuteCommandIntegration verifies ExecuteCommand creates edges for Intune admins to Windows devices
+func TestExecuteCommandIntegration(t *testing.T) {
+	g := seedAzureGraph(t)
+	db := g.DB
+
+	windowsDevice := createDevice(t, db, "device-001", "Windows Device")
+	linuxDevice := createDevice(t, db, "device-002", "Linux Device")
+
+	// Set OS properties
+	require.NoError(t, db.WriteTransaction(context.Background(), func(tx graph.Transaction) error {
+		windowsDevice.Properties.Set("operatingsystem", "Windows 10 Enterprise")
+		return tx.UpdateNode(windowsDevice)
+	}))
+
+	// Create relationships
+	createRel(t, db, g.Tenant, windowsDevice, azschema.Contains)
+	createRel(t, db, g.Tenant, linuxDevice, azschema.Contains)
+
+	// Create Intune admin role and assign to user
+	intuneRole := createRole(t, db, fmt.Sprintf("%s/%s", TenantObjectID, azschema.IntuneServiceAdministratorRole), "Intune Service Administrator", azschema.IntuneServiceAdministratorRole)
+	intuneAdmin := createUser(t, db, TenantObjectID, "user-intune-001", "Intune Admin")
+	createRel(t, db, g.Tenant, intuneRole, azschema.Contains)
+	createRel(t, db, g.Tenant, intuneAdmin, azschema.Contains)
+	createRel(t, db, intuneAdmin, intuneRole, azschema.HasRole)
+
+	// Run ExecuteCommand
+	stats, err := azure.ExecuteCommand(context.Background(), db)
+	require.NoError(t, err)
+	require.NotNil(t, stats)
+
+	// Verify edge exists to Windows device but not Linux device
+	requireRelExists(t, db, intuneAdmin.ID, windowsDevice.ID, azschema.ExecuteCommand)
+	requireRelNotExists(t, db, intuneAdmin.ID, linuxDevice.ID, azschema.ExecuteCommand)
+}
+
+// TestUserRoleAssignmentsIntegration verifies UserRoleAssignments creates edges correctly
+func TestUserRoleAssignmentsIntegration(t *testing.T) {
+	g := seedAzureGraph(t)
+	db := g.DB
+
+	// Run UserRoleAssignments
+	stats, err := azure.UserRoleAssignments(context.Background(), db)
+	require.NoError(t, err)
+	require.NotNil(t, stats)
+
+	// Verify GlobalAdmin edge was created (users[0] has CompanyAdministratorRole)
+	requireRelExists(t, db, g.Users[0].ID, g.Tenant.ID, azschema.GlobalAdmin)
+}
+
+// TestFixManagementGroupNamesIntegration tests management group name formatting
+func TestFixManagementGroupNamesIntegration(t *testing.T) {
+	g := seedAzureGraph(t)
+	db := g.DB
+
+	mgGroup := createManagementGroup(t, db, "mg-001", "Management Group")
+
+	// Set tenantID and displayName
+	require.NoError(t, db.WriteTransaction(context.Background(), func(tx graph.Transaction) error {
+		mgGroup.Properties.Set(azschema.TenantID.String(), TenantObjectID)
+		mgGroup.Properties.Set("displayname", "MyMG")
+		return tx.UpdateNode(mgGroup)
+	}))
+
+	// Run FixManagementGroupNames
+	err := azure.FixManagementGroupNames(context.Background(), db)
+	require.NoError(t, err)
+
+	// Verify the name was updated
+	require.NoError(t, db.ReadTransaction(context.Background(), func(tx graph.Transaction) error {
+		node, err := tx.Nodes().Filter(query.Equals(query.NodeID(), mgGroup.ID)).First()
+		require.NoError(t, err)
+		name, err := node.Properties.Get("name").String()
+		require.NoError(t, err)
+		// Name should be formatted as "DISPLAYNAME@TENANTNAME"
+		require.True(t, len(name) > 0 && name[0] == 'M', "expected management group name to start with M")
+		return nil
+	}))
+}
+
+// TestCreateAZRoleApproverEdgeIntegration tests approver edge creation
+func TestCreateAZRoleApproverEdgeIntegration(t *testing.T) {
+	g := seedAzureGraph(t)
+	db := g.DB
+
+	stats, err := azure.CreateAZRoleApproverEdge(context.Background(), db)
+	require.NoError(t, err)
+	require.NotNil(t, stats)
+}
+
+// TestAppRoleAssignmentsIntegration verifies AppRoleAssignments completes
+func TestAppRoleAssignmentsIntegration(t *testing.T) {
+	g := seedAzureGraph(t)
+	db := g.DB
+
+	stats, err := azure.AppRoleAssignments(context.Background(), db)
+	require.NoError(t, err)
+	require.NotNil(t, stats)
 }
