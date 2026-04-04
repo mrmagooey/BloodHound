@@ -462,6 +462,10 @@ allure-results
 allure-report
 go-test-results.json
 
+# playwright E2E test artifacts
+test-results/
+playwright-report/
+
 # standalone build artifacts
 bhapi
 ingestor

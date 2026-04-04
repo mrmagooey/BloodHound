@@ -23,7 +23,6 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
-	"strings"
 	"syscall"
 	"time"
 
@@ -176,17 +175,10 @@ func CreateDefaultAdmin(ctx context.Context, cfg config.Configuration, db databa
 		if _, err := db.InitializeSecretAuth(ctx, adminUser, authSecret); err != nil {
 			return fmt.Errorf("error in database while initializing auth: %w", err)
 		} else {
-			userMsg := fmt.Sprintf("# Admin Username:             %s    #", cfg.DefaultAdmin.PrincipalName)
-			passwordMsg := fmt.Sprintf("# Initial Password Set To:    %s    #", cfg.DefaultAdmin.Password)
-			paddingString := strings.Repeat(" ", len(passwordMsg)-2)
-			borderString := strings.Repeat("#", len(passwordMsg))
-
-			fmt.Println(borderString)
-			fmt.Printf("#%s#\n", paddingString)
-			fmt.Println(userMsg)
-			fmt.Println(passwordMsg)
-			fmt.Printf("#%s#\n", paddingString)
-			fmt.Println(borderString)
+			slog.InfoContext(ctx, "Default admin account created",
+				slog.String("username", cfg.DefaultAdmin.PrincipalName),
+				slog.String("password", cfg.DefaultAdmin.Password),
+			)
 		}
 	}
 

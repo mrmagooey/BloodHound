@@ -109,9 +109,9 @@ func Entrypoint(ctx context.Context, cfg config.Configuration, connections boots
 
 	if !cfg.DisableMigrations {
 		if standaloneMode {
-			// Standalone (SQLite) mode: just run the minimal schema migration; skip
-			// the full PostgreSQL migration + default admin setup.
-			if err := connections.RDMS.Migrate(ctx); err != nil {
+			// Standalone (SQLite) mode: run the SQLite schema migration and create the
+			// default admin account on first startup.
+			if err := bootstrap.MigrateDB(ctx, cfg, connections.RDMS, config.NewDefaultAdminConfiguration); err != nil {
 				return nil, fmt.Errorf("rdms migration error: %w", err)
 			}
 		} else {

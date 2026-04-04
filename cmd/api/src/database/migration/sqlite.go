@@ -17,6 +17,7 @@
 package migration
 
 import (
+	"github.com/specterops/bloodhound/cmd/api/src/auth"
 	"github.com/specterops/bloodhound/cmd/api/src/model"
 	"github.com/specterops/bloodhound/cmd/api/src/model/appcfg"
 	"gorm.io/gorm"
@@ -27,6 +28,16 @@ import (
 // migration files.
 func MigrateSQLite(db *gorm.DB) error {
 	if err := db.AutoMigrate(
+		// Auth tables
+		&model.Installation{},
+		&model.Permission{},
+		&model.Role{},
+		&model.User{},
+		&model.AuthSecret{},
+		&model.AuthToken{},
+		&model.UserSession{},
+		&model.EnvironmentTargetedAccessControl{},
+		// Ingest / asset group tables
 		&model.Migration{},
 		&model.IngestTask{},
 		&model.IngestJob{},
@@ -75,6 +86,50 @@ CREATE TABLE IF NOT EXISTS analysis_request_switch (
 
 	for _, stmt := range []string{createDatapipeStatus, seedDatapipeStatus, createAnalysisRequestSwitch} {
 		if err := db.Exec(stmt).Error; err != nil {
+			return err
+		}
+	}
+
+	return seedRolesAndPermissions(db)
+}
+
+// seedRolesAndPermissions populates the permissions, roles, and roles_permissions tables with
+// the canonical set of roles/permissions defined in the auth package. This is idempotent —
+// existing rows are left untouched (FirstOrCreate semantics).
+func seedRolesAndPermissions(db *gorm.DB) error {
+	// Ensure all permissions exist
+	for _, p := range auth.Permissions().All() {
+		perm := model.Permission{
+			Authority: p.Authority,
+			Name:      p.Name,
+		}
+		if result := db.Where(model.Permission{Authority: p.Authority, Name: p.Name}).
+			FirstOrCreate(&perm); result.Error != nil {
+			return result.Error
+		}
+	}
+
+	// Ensure all roles exist (with their permission associations)
+	for _, roleTemplate := range auth.Roles() {
+		// Resolve the Permission rows for this role
+		var permissions []model.Permission
+		for _, p := range roleTemplate.Permissions {
+			var perm model.Permission
+			if result := db.Where("authority = ? AND name = ?", p.Authority, p.Name).First(&perm); result.Error != nil {
+				return result.Error
+			}
+			permissions = append(permissions, perm)
+		}
+
+		role := model.Role{}
+		if result := db.Where("name = ?", roleTemplate.Name).
+			Attrs(model.Role{Description: roleTemplate.Description}).
+			FirstOrCreate(&role); result.Error != nil {
+			return result.Error
+		}
+
+		// Sync permission associations (append only; won't duplicate due to many2many uniqueness)
+		if err := db.Model(&role).Association("Permissions").Append(permissions); err != nil {
 			return err
 		}
 	}

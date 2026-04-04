@@ -549,7 +549,30 @@ func (s ManagementResource) GetUser(response http.ResponseWriter, request *http.
 
 func (s ManagementResource) GetSelf(response http.ResponseWriter, request *http.Request) {
 	bhCtx := ctx.FromRequest(request)
-	api.WriteBasicResponse(request.Context(), bhCtx.AuthCtx.Owner, http.StatusOK, response)
+
+	if user, isUser := auth.GetUserFromAuthCtx(bhCtx.AuthCtx); isUser {
+		// Normal authenticated path: return the user from the session/token auth context.
+		api.WriteBasicResponse(request.Context(), user, http.StatusOK, response)
+		return
+	}
+
+	// In standalone mode (SQLite) there is no session-based auth, so fall back to looking
+	// up the default admin user that was created during first-startup migration.
+	if s.config.SQLitePath != "" {
+		principalName := s.config.DefaultAdmin.PrincipalName
+		if principalName == "" {
+			principalName = "admin"
+		}
+		if adminUser, err := s.db.LookupUser(request.Context(), principalName); err != nil {
+			api.HandleDatabaseError(request, response, err)
+		} else {
+			api.WriteBasicResponse(request.Context(), adminUser, http.StatusOK, response)
+		}
+		return
+	}
+
+	// Not authenticated and not in standalone mode — return null data.
+	api.WriteBasicResponse(request.Context(), nil, http.StatusOK, response)
 }
 
 func (s ManagementResource) DeleteUser(response http.ResponseWriter, request *http.Request) {
