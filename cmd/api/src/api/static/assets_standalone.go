@@ -19,12 +19,22 @@
 package static
 
 import (
-	"net/http"
+	"embed"
+
+	"github.com/specterops/bloodhound/cmd/api/src/api"
 )
 
-// AssetHandler returns a simple message when built in standalone mode (no UI assets embedded).
-var AssetHandler http.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	w.WriteHeader(http.StatusNotFound)
-	w.Write([]byte("UI not available in standalone mode"))
+const (
+	assetBasePath  = "assets"
+	indexAssetPath = "index.html"
+)
+
+//go:embed all:assets
+var assets embed.FS
+
+var AssetHandler = MakeAssetHandler(AssetConfig{
+	FS:         assets,
+	BasePath:   assetBasePath,
+	IndexPath:  indexAssetPath,
+	PrefixPath: api.UserInterfacePath,
 })

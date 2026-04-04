@@ -1,4 +1,4 @@
-.PHONY: init kglite build test test-quick test-rust test-comparison test-adminer docker clean
+.PHONY: init kglite ui build test test-quick test-rust test-comparison test-adminer docker clean
 
 ## Initialize kglite submodule (run once after clone)
 init:
@@ -10,8 +10,13 @@ kglite: kglite-ffi/target/release/libkglite.a
 kglite-ffi/target/release/libkglite.a: kglite-ffi/src/**/*.rs kglite-ffi/Cargo.toml
 	cd kglite-ffi && cargo build --release --no-default-features --features ffi
 
-## Build the standalone binary
-build: kglite
+## Build the UI and copy assets to the embed directory
+ui:
+	cd cmd/ui && yarn install && yarn build
+	cp -r cmd/ui/dist/. cmd/api/src/api/static/assets/
+
+## Build the standalone binary (includes UI)
+build: kglite ui
 	go build -tags standalone -o bloodhound-standalone ./cmd/api/src/cmd/bhapi
 
 ## Run all non-comparison e2e tests
@@ -42,3 +47,4 @@ docker:
 clean:
 	rm -f bloodhound-standalone
 	cd kglite-ffi && cargo clean 2>/dev/null || true
+	find cmd/api/src/api/static/assets -not -name 'keep' -delete 2>/dev/null || true

@@ -35,7 +35,7 @@ func NewDefaultAdminConfiguration() (DefaultAdminConfiguration, error) {
 			EmailAddress:  "spam@example.com",
 			FirstName:     "Admin",
 			LastName:      "User",
-			ExpireNow:     true,
+			ExpireNow:     false,
 		}, nil
 	}
 }

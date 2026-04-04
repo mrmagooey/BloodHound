@@ -82,7 +82,7 @@ func (s Initializer[DBType, GraphType]) Launch(parentCtx context.Context, handle
 	}
 
 	// Log successful start and wait for a signal to exit
-	slog.InfoContext(ctx, "Server started successfully")
+	slog.InfoContext(ctx, fmt.Sprintf("Server started successfully, listening on %s", s.Configuration.BindAddress))
 	<-ctx.Done()
 
 	slog.InfoContext(ctx, "Shutting down")

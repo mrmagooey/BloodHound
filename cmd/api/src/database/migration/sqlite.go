@@ -18,6 +18,7 @@ package migration
 
 import (
 	"github.com/specterops/bloodhound/cmd/api/src/model"
+	"github.com/specterops/bloodhound/cmd/api/src/model/appcfg"
 	"gorm.io/gorm"
 )
 
@@ -40,6 +41,8 @@ func MigrateSQLite(db *gorm.DB) error {
 		&model.AssetGroupHistory{},
 		&model.SavedQuery{},
 		&model.SavedQueriesPermissions{},
+		&appcfg.Parameter{},
+		&appcfg.FeatureFlag{},
 	); err != nil {
 		return err
 	}

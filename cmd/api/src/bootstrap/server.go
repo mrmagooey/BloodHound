@@ -20,6 +20,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/signal"
 	"strings"
@@ -129,6 +130,10 @@ func CreateDefaultAdmin(ctx context.Context, cfg config.Configuration, db databa
 		needsLog = needsLogInner
 	}
 
+	if needsLog {
+		slog.Warn("Default admin configuration was partially populated with default values")
+	}
+
 	if roles, err := db.GetAllRoles(ctx, "", model.SQLFilter{}); err != nil {
 		return fmt.Errorf("error while attempting to fetch user roles: %w", err)
 	} else if secretDigest, err := secretDigester.Digest(cfg.DefaultAdmin.Password); err != nil {
@@ -170,18 +175,18 @@ func CreateDefaultAdmin(ctx context.Context, cfg config.Configuration, db databa
 
 		if _, err := db.InitializeSecretAuth(ctx, adminUser, authSecret); err != nil {
 			return fmt.Errorf("error in database while initializing auth: %w", err)
-		} else if needsLog {
+		} else {
+			userMsg := fmt.Sprintf("# Admin Username:             %s    #", cfg.DefaultAdmin.PrincipalName)
 			passwordMsg := fmt.Sprintf("# Initial Password Set To:    %s    #", cfg.DefaultAdmin.Password)
 			paddingString := strings.Repeat(" ", len(passwordMsg)-2)
 			borderString := strings.Repeat("#", len(passwordMsg))
 
 			fmt.Println(borderString)
 			fmt.Printf("#%s#\n", paddingString)
+			fmt.Println(userMsg)
 			fmt.Println(passwordMsg)
 			fmt.Printf("#%s#\n", paddingString)
 			fmt.Println(borderString)
-		} else {
-			fmt.Printf("Password has been set from existing config or environment variable\n")
 		}
 	}
 
