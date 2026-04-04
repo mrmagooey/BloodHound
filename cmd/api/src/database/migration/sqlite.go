@@ -90,7 +90,10 @@ CREATE TABLE IF NOT EXISTS analysis_request_switch (
 		}
 	}
 
-	return seedRolesAndPermissions(db)
+	if err := seedRolesAndPermissions(db); err != nil {
+		return err
+	}
+	return seedFeatureFlags(db)
 }
 
 // seedRolesAndPermissions populates the permissions, roles, and roles_permissions tables with
@@ -121,9 +124,12 @@ func seedRolesAndPermissions(db *gorm.DB) error {
 			permissions = append(permissions, perm)
 		}
 
-		role := model.Role{}
-		if result := db.Where("name = ?", roleTemplate.Name).
-			Attrs(model.Role{Description: roleTemplate.Description}).
+		role := model.Role{
+			Name:        roleTemplate.Name,
+			Description: roleTemplate.Description,
+		}
+		if result := db.Where(model.Role{Name: roleTemplate.Name}).
+			Assign(model.Role{Description: roleTemplate.Description}).
 			FirstOrCreate(&role); result.Error != nil {
 			return result.Error
 		}
@@ -131,6 +137,44 @@ func seedRolesAndPermissions(db *gorm.DB) error {
 		// Sync permission associations (append only; won't duplicate due to many2many uniqueness)
 		if err := db.Model(&role).Association("Permissions").Append(permissions); err != nil {
 			return err
+		}
+	}
+
+	return nil
+}
+
+// seedFeatureFlags populates the feature_flags table with the canonical set of flags and their
+// default values. This mirrors the inserts spread across the PostgreSQL versioned migration files.
+// It is idempotent — existing rows (including any user-modified enabled state) are left untouched.
+func seedFeatureFlags(db *gorm.DB) error {
+	flags := []appcfg.FeatureFlag{
+		{Key: appcfg.FeatureButterflyAnalysis, Name: "Enhanced Asset Inbound-Outbound Exposure Analysis", Description: "Enables more extensive analysis of attack path findings that allows BloodHound to help the user prioritize remediation of the most exposed assets.", Enabled: false, UserUpdatable: false},
+		{Key: appcfg.FeatureEnableSAMLSSO, Name: "SAML Single Sign-On Support", Description: "Enables SSO authentication flows and administration panels to third party SAML identity providers.", Enabled: true, UserUpdatable: false},
+		{Key: appcfg.FeatureScopeCollectionByOU, Name: "Enable SharpHound OU Scoped Collections", Description: "Enables scoping SharpHound collections to specific lists of OUs.", Enabled: true, UserUpdatable: false},
+		{Key: appcfg.FeatureAzureSupport, Name: "Enable Azure Support", Description: "Enables Azure support.", Enabled: true, UserUpdatable: false},
+		{Key: appcfg.FeatureEntityPanelCaching, Name: "Enable application level caching", Description: "Enables the use of application level caching for entity panel queries.", Enabled: true, UserUpdatable: false},
+		{Key: appcfg.FeatureAdcs, Name: "Enable collection and processing of Active Directory Certificate Services Data", Description: "Enables the ability to collect, analyze, and explore Active Directory Certificate Services data and previews new attack paths.", Enabled: false, UserUpdatable: false},
+		{Key: appcfg.FeatureClearGraphData, Name: "Clear Graph Data", Description: "Enables the ability to delete all nodes and edges from the graph database.", Enabled: true, UserUpdatable: false},
+		{Key: appcfg.FeatureRiskExposureNewCalculation, Name: "Use new tier zero risk exposure calculation", Description: "Enables the use of new tier zero risk exposure metatree metrics.", Enabled: false, UserUpdatable: false},
+		{Key: appcfg.FeatureFedRAMPEULA, Name: "FedRAMP EULA", Description: "Enables showing the FedRAMP EULA on every login. (Enterprise only)", Enabled: false, UserUpdatable: false},
+		{Key: appcfg.FeatureDarkMode, Name: "Dark Mode", Description: "Allows users to enable or disable dark mode via a toggle in the settings menu.", Enabled: true, UserUpdatable: false},
+		{Key: appcfg.FeatureAutoTagT0ParentObjects, Name: "Automatically add parent OUs and containers of Tier Zero AD objects to Tier Zero", Description: "Parent OUs and containers of Tier Zero AD objects are automatically added to Tier Zero during analysis.", Enabled: true, UserUpdatable: true},
+		{Key: appcfg.FeatureOIDCSupport, Name: "OIDC Support", Description: "Enables OIDC authentication support.", Enabled: false, UserUpdatable: false},
+		{Key: appcfg.FeatureNTLMPostProcessing, Name: "NTLM Post Processing", Description: "Enables NTLM post processing.", Enabled: true, UserUpdatable: false},
+		{Key: appcfg.FeatureTierManagement, Name: "Tier Management Engine", Description: "Enables the tier management engine.", Enabled: false, UserUpdatable: false},
+		{Key: appcfg.FeatureChangelog, Name: "Changelog", Description: "This flag allows the application to query the changelog daemon for deduplication of ingest payloads.", Enabled: false, UserUpdatable: false},
+		{Key: appcfg.FeatureETAC, Name: "Environment Targeted Access Control", Description: "Enables environment targeted access control.", Enabled: false, UserUpdatable: false},
+		{Key: appcfg.FeatureOpenGraphSearch, Name: "Open Graph Search", Description: "Enables open graph search.", Enabled: true, UserUpdatable: false},
+		{Key: appcfg.FeatureOpenGraphFindings, Name: "Open Graph Findings", Description: "Enables open graph findings.", Enabled: false, UserUpdatable: false},
+		{Key: appcfg.FeatureClientBearerAuth, Name: "Client Bearer Auth", Description: "Enables client bearer auth.", Enabled: false, UserUpdatable: false},
+		{Key: appcfg.FeatureOpenGraphExtensionManagement, Name: "Open Graph Extension Management", Description: "Enables open graph extension management.", Enabled: false, UserUpdatable: false},
+		{Key: appcfg.FeatureOGCollectorPlatformSupport, Name: "Open Graph Collector Platform Support", Description: "Enables open graph collector platform support.", Enabled: false, UserUpdatable: false},
+	}
+
+	for _, f := range flags {
+		flag := f
+		if result := db.Where(appcfg.FeatureFlag{Key: flag.Key}).FirstOrCreate(&flag); result.Error != nil {
+			return result.Error
 		}
 	}
 
