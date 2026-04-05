@@ -15,8 +15,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { expect, test } from '@playwright/test';
-import { loginViaAPI, loginViaUI } from './helpers';
-import { E2E_ADMIN_USERNAME } from './global-setup';
+import { loginViaUI } from './helpers';
 
 test.describe('My Profile page', () => {
     test.setTimeout(60_000);
@@ -95,14 +94,5 @@ test.describe('My Profile page', () => {
         await expect(profileContainer).toBeVisible({ timeout: 15_000 });
     });
 
-    test('profile API self endpoint returns current user data', async ({ request }) => {
-        const token = await loginViaAPI(request);
-        const response = await request.get('/api/v2/self', {
-            headers: { Authorization: `Bearer ${token}` },
-        });
-        expect(response.status()).toBe(200);
-        const body = await response.json();
-        expect(body.data.principal_name).toBe(E2E_ADMIN_USERNAME);
-        expect(body.data.email_address).toBe('admin@e2e.test');
-    });
+    // Covered by UI tests: 'profile page shows admin user email' and 'profile page shows admin user name'
 });

@@ -15,7 +15,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { expect, test } from '@playwright/test';
-import { loginViaAPI, loginViaUI } from './helpers';
+import { loginViaUI } from './helpers';
 
 test.describe('Early Access Features interaction', () => {
     test.setTimeout(60_000);
@@ -85,17 +85,7 @@ test.describe('Early Access Features interaction', () => {
         expect(page.url()).not.toContain('early-access-features');
     });
 
-    test('feature flags API returns data', async ({ request }) => {
-        const token = await loginViaAPI(request);
-        const response = await request.get('/api/v2/features', {
-            headers: { Authorization: `Bearer ${token}` },
-        });
-        expect(response.status()).toBe(200);
-        const body = await response.json();
-        // The response should have a data array of feature flags
-        expect(body.data).toBeTruthy();
-        expect(Array.isArray(body.data)).toBe(true);
-    });
+    // Covered by UI tests: 'early access page shows warning dialog' and 'early access page shows feature flags after dismissing warning'
 });
 
 test.describe('Dark Mode toggle', () => {

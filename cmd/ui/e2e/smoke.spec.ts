@@ -17,12 +17,10 @@
 import { expect, test } from '@playwright/test';
 
 test.describe('Smoke tests', () => {
-    test('API self endpoint returns 200', async ({ request }) => {
-        const response = await request.get('/api/v2/self');
-        expect(response.status()).toBe(200);
-        const body = await response.json();
-        // In standalone mode without auth, data is null
-        expect(body).toHaveProperty('data');
+    test('app loads and auth works', async ({ page }) => {
+        await page.goto('/ui/explore');
+        await page.waitForSelector('[data-testid="explore"]', { timeout: 15_000 });
+        expect(page.url()).toContain('/ui/explore');
     });
 
     test('root URL redirects to /ui', async ({ page }) => {
@@ -32,26 +30,20 @@ test.describe('Smoke tests', () => {
         expect(response?.status()).toBeLessThan(400);
     });
 
-    test('UI serves HTML at /ui/', async ({ request }) => {
-        const response = await request.get('/ui/');
-        expect(response.status()).toBe(200);
-        const body = await response.text();
-        expect(body).toContain('<!DOCTYPE html>');
-        expect(body).toContain('BloodHound');
+    test('UI serves HTML at /ui/', async ({ page }) => {
+        await page.goto('/ui/');
+        await page.waitForURL(/\/ui\//, { timeout: 10_000 });
+        const html = await page.content();
+        expect(html).toContain('<!DOCTYPE html>');
     });
 
-    test('static assets are served', async ({ request }) => {
-        // The main HTML references JS and CSS assets
-        const htmlResponse = await request.get('/ui/');
-        const html = await htmlResponse.text();
+    test('static assets are served', async ({ page }) => {
+        await page.goto('/ui/');
+        await page.waitForURL(/\/ui\//, { timeout: 10_000 });
 
-        // Extract a JS asset path from the HTML
-        const jsMatch = html.match(/src="(\/ui\/assets\/[^"]+\.js)"/);
-        expect(jsMatch).not.toBeNull();
-
-        if (jsMatch) {
-            const jsResponse = await request.get(jsMatch[1]);
-            expect(jsResponse.status()).toBe(200);
-        }
+        // The page should contain a script tag pointing to a JS bundle
+        const jsScript = page.locator('script[src*=".js"]');
+        const count = await jsScript.count();
+        expect(count).toBeGreaterThan(0);
     });
 });

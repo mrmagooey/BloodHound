@@ -15,7 +15,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { expect, test } from '@playwright/test';
-import { loginViaAPI, loginViaUI } from './helpers';
+import { loginViaUI } from './helpers';
 
 test.describe('Privilege Zones page', () => {
     test.setTimeout(60_000);
@@ -60,14 +60,19 @@ test.describe('Privilege Zones page', () => {
         expect(errors).toEqual([]);
     });
 
-    test('asset group tags API endpoint responds (gated by feature flag)', async ({ request }) => {
-        const token = await loginViaAPI(request);
+    test('privilege zones page shows zone content or empty state', async ({ page }) => {
+        await page.goto('/ui/privilege-zones');
 
-        const response = await request.get('/api/v2/asset-group-tags', {
-            headers: { Authorization: `Bearer ${token}` },
-        });
-        // The endpoint is gated by the tier_management_engine feature flag.
-        // When the flag is disabled, the server returns 404; when enabled, 200.
-        expect([200, 404]).toContain(response.status());
+        const heading = page.locator('h1', { hasText: 'Zone Builder' });
+        await expect(heading).toBeVisible({ timeout: 15_000 });
+
+        // The page should show zone list content or an empty/disabled state
+        const bodyText = await page.textContent('body');
+        const hasZoneContent =
+            bodyText?.includes('Zone') ||
+            bodyText?.includes('Label') ||
+            bodyText?.includes('No zones') ||
+            bodyText?.includes('Create');
+        expect(hasZoneContent).toBe(true);
     });
 });

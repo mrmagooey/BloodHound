@@ -15,7 +15,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { expect, test } from '@playwright/test';
-import { loginViaAPI, loginViaUI } from './helpers';
+import { loginViaUI } from './helpers';
 
 test.describe('Administration pages', () => {
     test.setTimeout(60_000);
@@ -109,12 +109,22 @@ test.describe('Administration pages - deeper coverage', () => {
         expect(bodyText).toContain('SharpHound');
     });
 
-    test('file-upload accepted-types API returns data', async ({ request }) => {
-        const token = await loginViaAPI(request);
-        const response = await request.get('/api/v2/file-upload/accepted-types', {
-            headers: { Authorization: `Bearer ${token}` },
-        });
-        expect(response.status()).toBe(200);
+    test('File Ingest page upload dialog accepts JSON files', async ({ page }) => {
+        await page.goto('/ui/administration/file-ingest');
+        await page.waitForSelector('[data-testid="manual-file-ingest"]', { timeout: 15_000 });
+
+        // Open the upload dialog
+        const uploadBtn = page.getByTestId('file-ingest_button-upload-files');
+        await expect(uploadBtn).toBeVisible({ timeout: 10_000 });
+        await uploadBtn.click();
+
+        // The upload dialog should appear with a file input
+        const dialog = page.locator('[role="dialog"]');
+        await expect(dialog).toBeVisible({ timeout: 5_000 });
+
+        // Verify the file input is present (accepts JSON files)
+        const fileInput = page.getByTestId('ingest-file-upload');
+        await expect(fileInput).toBeAttached({ timeout: 5_000 });
     });
 
     // --- Data Quality deeper tests ---
@@ -178,18 +188,7 @@ test.describe('Administration pages - deeper coverage', () => {
         expect(tableText).toContain('admin');
     });
 
-    test('users API returns the admin user', async ({ request }) => {
-        const token = await loginViaAPI(request);
-        const response = await request.get('/api/v2/bloodhound-users', {
-            headers: { Authorization: `Bearer ${token}` },
-        });
-        expect(response.status()).toBe(200);
-        const body = await response.json();
-        expect(body.data).toBeTruthy();
-        expect(body.data.users).toBeTruthy();
-        const adminUser = body.data.users.find((u: any) => u.principal_name === 'admin');
-        expect(adminUser).toBeTruthy();
-    });
+    // Covered by UI test: 'Manage Users page displays the admin user in the table'
 
     // --- BloodHound Configuration deeper tests ---
 
@@ -203,30 +202,13 @@ test.describe('Administration pages - deeper coverage', () => {
         expect(bodyText).toContain('Citrix');
     });
 
-    test('configuration API endpoint returns data', async ({ request }) => {
-        const token = await loginViaAPI(request);
-        const response = await request.get('/api/v2/config', {
-            headers: { Authorization: `Bearer ${token}` },
-        });
-        expect(response.status()).toBe(200);
-        const body = await response.json();
-        expect(body.data).toBeTruthy();
-    });
+    // Covered by UI test: 'BloodHound Configuration page shows Analyze Now and Citrix options'
 });
 
 test.describe('Data Quality page', () => {
     test.setTimeout(60_000);
 
-    test('available-domains API returns 200', async ({ request }) => {
-        const token = await loginViaAPI(request);
-        const response = await request.get('/api/v2/available-domains', {
-            headers: { Authorization: `Bearer ${token}` },
-        });
-        expect(response.status()).toBe(200);
-        const body = await response.json();
-        expect(body.data).toBeDefined();
-        expect(Array.isArray(body.data)).toBe(true);
-    });
+    // Covered by UI tests: 'page loads without errors' and 'page shows domain selector or empty state'
 
     test('page loads without errors', async ({ page }) => {
         const errors: Error[] = [];

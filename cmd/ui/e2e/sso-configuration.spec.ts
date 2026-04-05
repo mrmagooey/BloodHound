@@ -15,7 +15,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { expect, test } from '@playwright/test';
-import { loginViaAPI, loginViaUI } from './helpers';
+import { loginViaUI } from './helpers';
 
 test.describe('SSO Configuration page', () => {
     test.setTimeout(60_000);
@@ -64,16 +64,5 @@ test.describe('SSO Configuration page', () => {
         expect(errors).toEqual([]);
     });
 
-    test('SSO providers API endpoint is accessible', async ({ request }) => {
-        const token = await loginViaAPI(request);
-
-        const response = await request.get('/api/v2/sso-providers', {
-            headers: { Authorization: `Bearer ${token}` },
-        });
-        // Should return 200 with an empty or populated list
-        expect(response.status()).toBe(200);
-        const body = await response.json();
-        // data may be null (empty list) or an array of providers
-        expect(body.data === null || Array.isArray(body.data)).toBe(true);
-    });
+    // Covered by UI tests: 'SSO Configuration page shows Providers list heading' and 'SSO Configuration page shows Create provider button'
 });

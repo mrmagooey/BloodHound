@@ -14,8 +14,9 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-import { APIRequestContext, expect, test } from '@playwright/test';
-import { E2E_ADMIN_PASSWORD, E2E_ADMIN_USERNAME } from './global-setup';
+import { expect, test } from '@playwright/test';
+import { loginViaUI } from './helpers';
+import { E2E_ADMIN_USERNAME, E2E_ADMIN_PASSWORD } from './global-setup';
 
 /**
  * Minimal BloodHound v6 ingest JSON for a single domain. This exercises the
@@ -85,187 +86,171 @@ const MINIMAL_COMPUTER_JSON = JSON.stringify({
     ],
 });
 
-/**
- * Helper: log in via the API and return the bearer session token.
- */
-async function loginAndGetToken(request: APIRequestContext): Promise<string> {
-    const loginResponse = await request.post('/api/v2/login', {
-        data: {
-            login_method: 'secret',
-            username: E2E_ADMIN_USERNAME,
-            secret: E2E_ADMIN_PASSWORD,
-        },
-    });
-
-    expect(loginResponse.status(), 'Login should succeed').toBe(200);
-    const loginBody = await loginResponse.json();
-    const token = loginBody.data.session_token;
-    expect(token, 'Session token should be present').toBeTruthy();
-    return token;
-}
-
-/**
- * Helper: poll a condition function until it returns true, with a timeout.
- */
-async function pollUntil(
-    fn: () => Promise<boolean>,
-    { intervalMs = 2000, timeoutMs = 60_000, description = 'condition' } = {}
-): Promise<void> {
-    const deadline = Date.now() + timeoutMs;
-    while (Date.now() < deadline) {
-        if (await fn()) return;
-        await new Promise((r) => setTimeout(r, intervalMs));
-    }
-    throw new Error(`Timed out waiting for ${description} after ${timeoutMs}ms`);
-}
-
 test.describe('Ingest and Analysis workflow', () => {
     // Increase the overall test timeout because ingest + analysis can take time.
     test.setTimeout(120_000);
 
-    test('login, upload data, ingest, trigger analysis, and verify completion', async ({ request }) => {
-        let token: string;
-
-        await test.step('Authenticate via API login', async () => {
-            token = await loginAndGetToken(request);
+    test('login, upload data, ingest, trigger analysis, and verify completion', async ({ page }) => {
+        await test.step('Login via UI', async () => {
+            await loginViaUI(page);
         });
 
-        const authHeaders = () => ({ Authorization: `Bearer ${token!}` });
-
-        await test.step('Verify self endpoint returns authenticated user', async () => {
-            const selfResponse = await request.get('/api/v2/self', { headers: authHeaders() });
-            expect(selfResponse.status()).toBe(200);
-            const selfBody = await selfResponse.json();
-            expect(selfBody.data).not.toBeNull();
-            expect(selfBody.data.principal_name).toBe(E2E_ADMIN_USERNAME);
+        // Step 1: Upload domain data via the File Ingest page UI
+        await test.step('Navigate to File Ingest page', async () => {
+            await page.goto('/ui/administration/file-ingest');
+            await page.waitForSelector('[data-testid="manual-file-ingest"]', { timeout: 15_000 });
         });
 
-        let jobId: number;
+        await test.step('Upload domain JSON via UI', async () => {
+            const uploadBtn = page.getByTestId('file-ingest_button-upload-files');
+            await expect(uploadBtn).toBeVisible({ timeout: 10_000 });
+            await expect(uploadBtn).toBeEnabled({ timeout: 10_000 });
+            await uploadBtn.click();
 
-        await test.step('Start a file ingest job', async () => {
-            const startResponse = await request.post('/api/v2/file-upload/start', {
-                headers: authHeaders(),
+            const dialog = page.locator('[role="dialog"]');
+            await expect(dialog).toBeVisible({ timeout: 5_000 });
+
+            const fileInput = page.getByTestId('ingest-file-upload');
+            await fileInput.setInputFiles({
+                name: 'ingest-domains.json',
+                mimeType: 'application/json',
+                buffer: Buffer.from(MINIMAL_DOMAIN_JSON),
             });
-            expect(startResponse.status(), 'Start ingest job should return 201').toBe(201);
-            const startBody = await startResponse.json();
-            jobId = startBody.data.id;
-            expect(jobId, 'Job ID should be a positive number').toBeGreaterThan(0);
+
+            const confirmBtn = page.getByTestId('confirmation-dialog_button-yes');
+            await expect(confirmBtn).toBeEnabled({ timeout: 5_000 });
+            await confirmBtn.click();
+
+            await expect(dialog.locator('text=/successfully.*uploaded/i')).toBeVisible({ timeout: 30_000 });
+
+            const closeBtn = page.getByTestId('confirmation-dialog_button-no');
+            await closeBtn.click();
+            await expect(dialog).not.toBeVisible({ timeout: 5_000 });
         });
 
-        await test.step('Upload domain JSON to the ingest job', async () => {
-            const uploadResponse = await request.post(`/api/v2/file-upload/${jobId!}`, {
-                headers: {
-                    ...authHeaders(),
-                    'Content-Type': 'application/json',
-                },
-                data: MINIMAL_DOMAIN_JSON,
+        await test.step('Upload computer JSON via UI', async () => {
+            const uploadBtn = page.getByTestId('file-ingest_button-upload-files');
+            await expect(uploadBtn).toBeVisible({ timeout: 10_000 });
+            await expect(uploadBtn).toBeEnabled({ timeout: 10_000 });
+            await uploadBtn.click();
+
+            const dialog = page.locator('[role="dialog"]');
+            await expect(dialog).toBeVisible({ timeout: 5_000 });
+
+            const fileInput = page.getByTestId('ingest-file-upload');
+            await fileInput.setInputFiles({
+                name: 'ingest-computers.json',
+                mimeType: 'application/json',
+                buffer: Buffer.from(MINIMAL_COMPUTER_JSON),
             });
-            expect(uploadResponse.status(), 'Domain JSON upload should return 202').toBe(202);
+
+            const confirmBtn = page.getByTestId('confirmation-dialog_button-yes');
+            await expect(confirmBtn).toBeEnabled({ timeout: 5_000 });
+            await confirmBtn.click();
+
+            await expect(dialog.locator('text=/successfully.*uploaded/i')).toBeVisible({ timeout: 30_000 });
+
+            const closeBtn = page.getByTestId('confirmation-dialog_button-no');
+            await closeBtn.click();
+            await expect(dialog).not.toBeVisible({ timeout: 5_000 });
         });
 
-        await test.step('Upload computer JSON to the ingest job', async () => {
-            const uploadResponse = await request.post(`/api/v2/file-upload/${jobId!}`, {
-                headers: {
-                    ...authHeaders(),
-                    'Content-Type': 'application/json',
-                },
-                data: MINIMAL_COMPUTER_JSON,
-            });
-            expect(uploadResponse.status(), 'Computer JSON upload should return 202').toBe(202);
+        // Step 2: Wait for ingest to complete
+        await test.step('Wait for ingest jobs to finish processing', async () => {
+            await expect(async () => {
+                const rows = page.locator('table tbody tr');
+                const rowCount = await rows.count();
+                expect(rowCount, 'Ingest table should have rows').toBeGreaterThan(0);
+
+                const runningIndicators = page.locator('table tbody tr').filter({ hasText: /Running|Ingesting|Ready|Analyzing/ });
+                const activeCount = await runningIndicators.count();
+                expect(activeCount, 'No in-progress jobs should remain').toBe(0);
+
+                const completeIndicators = page.locator('table tbody tr').filter({ hasText: 'Complete' });
+                const completeCount = await completeIndicators.count();
+                expect(completeCount, 'At least one Complete job should exist').toBeGreaterThan(0);
+            }).toPass({ intervals: [1_000, 2_000, 2_000], timeout: 60_000 });
         });
 
-        await test.step('End the ingest job', async () => {
-            const endResponse = await request.post(`/api/v2/file-upload/${jobId!}/end`, {
-                headers: authHeaders(),
-            });
-            expect(endResponse.status(), 'End ingest job should return 200').toBe(200);
-        });
+        // Step 3: Trigger analysis via the BloodHound Configuration page UI
+        await test.step('Navigate to BloodHound Configuration and trigger analysis', async () => {
+            await page.goto('/ui/administration/bloodhound-configuration');
 
-        await test.step('Wait for the ingest job to finish processing', async () => {
-            // Poll the job status directly rather than the datapipe status.
-            // The datapipe processes ingest on a short timer (1s in test config),
-            // but its non-idle state is so transient we might miss it.
-            await pollUntil(
-                async () => {
-                    const jobsResponse = await request.get('/api/v2/file-upload', {
-                        headers: authHeaders(),
-                    });
-                    if (jobsResponse.status() !== 200) return false;
-                    const jobsBody = await jobsResponse.json();
-                    const jobs = jobsBody.data;
-                    if (!Array.isArray(jobs)) return false;
-                    const ourJob = jobs.find((j: any) => j.id === jobId);
-                    if (!ourJob) return false;
-                    // Terminal states: 2 = complete, 5 = failed, 8 = partially_complete
-                    return [2, 5, 8].includes(ourJob.status);
-                },
-                { timeoutMs: 60_000, intervalMs: 1000, description: 'ingest job to reach terminal state' }
+            const analyzeBtn = page.getByRole('button', { name: /Analyze Now/i });
+            await expect(analyzeBtn).toBeVisible({ timeout: 15_000 });
+            await expect(analyzeBtn).toBeEnabled({ timeout: 15_000 });
+
+            const analysisResponsePromise = page.waitForResponse(
+                (res) => res.url().includes('/api/v2/analysis') && res.request().method() === 'PUT',
+                { timeout: 15_000 }
             );
-        });
 
-        await test.step('Verify ingest job reached a successful terminal state', async () => {
-            const jobsResponse = await request.get('/api/v2/file-upload', {
-                headers: authHeaders(),
-            });
-            expect(jobsResponse.status()).toBe(200);
-            const jobsBody = await jobsResponse.json();
-            const jobs = jobsBody.data;
-            expect(Array.isArray(jobs), 'Jobs list should be an array').toBe(true);
+            await analyzeBtn.click();
 
-            const ourJob = jobs.find((j: any) => j.id === jobId);
-            expect(ourJob, 'Our ingest job should appear in the list').toBeTruthy();
-            // Terminal states: 2 = complete, 8 = partially_complete
-            expect(
-                [2, 8].includes(ourJob.status),
-                `Job status should be complete (2) or partially_complete (8), got ${ourJob.status}`
-            ).toBe(true);
-        });
+            const confirmBtn = page.getByRole('button', { name: /Confirm/i });
+            if (await confirmBtn.isVisible({ timeout: 3_000 }).catch(() => false)) {
+                await confirmBtn.click();
+            }
 
-        await test.step('Request analysis', async () => {
-            const analysisResponse = await request.put('/api/v2/analysis', {
-                headers: authHeaders(),
-            });
+            const analysisResponse = await analysisResponsePromise;
             expect(analysisResponse.status(), 'Request analysis should return 202').toBe(202);
         });
 
         await test.step('Wait for analysis to complete', async () => {
-            // Poll for the last_complete_analysis_at timestamp to be set,
-            // indicating analysis has finished at least once.
-            await pollUntil(
-                async () => {
-                    const statusResponse = await request.get('/api/v2/datapipe/status', {
-                        headers: authHeaders(),
-                    });
-                    if (statusResponse.status() !== 200) return false;
-                    const body = await statusResponse.json();
-                    const lastAnalysis = body.data?.last_complete_analysis_at;
-                    return lastAnalysis && lastAnalysis !== '0001-01-01T00:00:00Z';
-                },
-                { timeoutMs: 60_000, intervalMs: 1000, description: 'analysis to complete (last_complete_analysis_at set)' }
-            );
+            const analyzeBtn = page.getByRole('button', { name: /Analyze Now/i });
+            await expect(analyzeBtn).toBeVisible({ timeout: 60_000 });
+            await expect(analyzeBtn).toBeEnabled({ timeout: 60_000 });
         });
 
-        await test.step('Verify datapipe has a last_complete_analysis_at timestamp', async () => {
-            const statusResponse = await request.get('/api/v2/datapipe/status', {
-                headers: authHeaders(),
-            });
-            expect(statusResponse.status()).toBe(200);
-            const body = await statusResponse.json();
-            const lastAnalysis = body.data?.last_complete_analysis_at;
-            // The timestamp should be set (not zero/null) after a successful analysis
-            expect(lastAnalysis, 'last_complete_analysis_at should be set').toBeTruthy();
-            // Verify it is a real timestamp (not the Go zero time "0001-01-01T00:00:00Z")
-            expect(lastAnalysis).not.toBe('0001-01-01T00:00:00Z');
+        // Step 4: Verify via Cypher query in the UI
+        await test.step('Navigate to Explore page', async () => {
+            await page.goto('/ui/explore');
+            await page.waitForSelector('[data-testid="explore"]', { timeout: 15_000 });
+        });
+
+        const cypherResponsePromise = page.waitForResponse(
+            (res) => res.url().includes('/api/v2/graphs/cypher') && res.request().method() === 'POST',
+            { timeout: 30_000 }
+        ).catch(() => null);
+
+        await test.step('Run Cypher query via the UI', async () => {
+            const dialog = page.getByRole('dialog');
+            if (await dialog.isVisible({ timeout: 3_000 }).catch(() => false)) {
+                await page.keyboard.press('Escape');
+                await dialog.waitFor({ state: 'hidden', timeout: 5_000 }).catch(() => {});
+            }
+
+            const cypherTab = page.getByTestId('explore_search-container_header_cypher-tab');
+            await cypherTab.click();
+            await expect(cypherTab).toHaveAttribute('aria-selected', 'true', { timeout: 5_000 });
+
+            const cmEditor = page.locator('.cm-editor');
+            await expect(cmEditor.first()).toBeVisible({ timeout: 10_000 });
+
+            const cmContent = page.locator('.cm-content');
+            await cmContent.first().click();
+
+            await page.keyboard.press('ControlOrMeta+a');
+            await page.keyboard.type("MATCH (n) WHERE n.domain = 'E2ETEST.LOCAL' RETURN n LIMIT 10", { delay: 10 });
+
+            await page.keyboard.press('Shift+Enter');
+        });
+
+        await test.step('Verify Cypher API returned nodes', async () => {
+            const cypherResponse = await cypherResponsePromise;
+            expect(cypherResponse, 'Cypher API response should have been received').not.toBeNull();
+            const responseStatus = cypherResponse!.status();
+            const responseBody = await cypherResponse!.json();
+            const nodeCount = responseBody?.data?.nodes ? Object.keys(responseBody.data.nodes).length : 0;
+            expect(responseStatus, `Cypher API should return 200, got ${responseStatus}`).toBe(200);
+            expect(nodeCount, 'Cypher response should contain nodes from E2ETEST.LOCAL').toBeGreaterThan(0);
         });
     });
 
-    test('File Ingest page is accessible after login via UI', async ({ page, request }) => {
+    test('File Ingest page is accessible after login via UI', async ({ page }) => {
         await test.step('Navigate to file ingest administration page', async () => {
-            // Use the loginViaUI helper which handles both standalone and normal modes.
             await page.goto('/ui/login');
 
-            // Race: either the login form appears (normal mode) or the app
-            // auto-redirects away from /login (standalone mode).
             const loginForm = page.locator('#username');
             const redirected = page.waitForURL(/\/ui\/(?!login)/, { timeout: 15_000 });
             const formAppeared = loginForm.waitFor({ state: 'visible', timeout: 15_000 }).then(() => 'form' as const);
@@ -285,7 +270,6 @@ test.describe('Ingest and Analysis workflow', () => {
 
         await test.step('Navigate to Administration > File Ingest', async () => {
             await page.goto('/ui/administration/file-ingest');
-            // Wait for the File Ingest page to render
             await page.waitForSelector('[data-testid="manual-file-ingest"]', { timeout: 15_000 });
             const fileIngestHeading = page.getByTestId('manual-file-ingest');
             await expect(fileIngestHeading).toBeVisible();

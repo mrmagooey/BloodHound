@@ -49,7 +49,7 @@ const MINIMAL_DOMAIN_JSON = JSON.stringify({
 test.describe('File Ingest Upload via UI', () => {
     test.setTimeout(120_000);
 
-    test('upload a file through the file ingest dialog and verify the job appears', async ({ page, request }) => {
+    test('upload a file through the file ingest dialog and verify the job appears', async ({ page }) => {
         await loginViaUI(page);
 
         await test.step('Navigate to File Ingest page', async () => {

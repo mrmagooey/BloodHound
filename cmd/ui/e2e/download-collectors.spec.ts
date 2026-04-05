@@ -15,7 +15,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { expect, test } from '@playwright/test';
-import { loginViaAPI, loginViaUI } from './helpers';
+import { loginViaUI } from './helpers';
 
 test.describe('Download Collectors page', () => {
     test.setTimeout(60_000);
@@ -35,20 +35,16 @@ test.describe('Download Collectors page', () => {
         expect(pageText).toContain('AzureHound');
     });
 
-    test('collectors API endpoint returns data or 500 when no manifests configured', async ({ request }) => {
-        const token = await loginViaAPI(request);
+    test('download collectors page shows collector content', async ({ page }) => {
+        await loginViaUI(page);
 
-        const sharpHoundResponse = await request.get('/api/v2/collectors/sharphound', {
-            headers: { Authorization: `Bearer ${token}` },
-        });
-        // In standalone mode without collector manifests the endpoint returns 500.
-        // In a full deployment it returns 200.
-        expect([200, 500]).toContain(sharpHoundResponse.status());
+        await page.goto('/ui/download-collectors');
+        await page.waitForSelector('[data-testid="download-collectors"]', { timeout: 15_000 });
 
-        const azureHoundResponse = await request.get('/api/v2/collectors/azurehound', {
-            headers: { Authorization: `Bearer ${token}` },
-        });
-        expect([200, 500]).toContain(azureHoundResponse.status());
+        // The page should show SharpHound and AzureHound content
+        const pageText = await page.textContent('body');
+        expect(pageText).toContain('SharpHound');
+        expect(pageText).toContain('AzureHound');
     });
 
     test('page does not produce console errors', async ({ page }) => {

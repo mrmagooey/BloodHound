@@ -14,9 +14,8 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-import { expect, test } from '@playwright/test';
-import { loginViaAPI, loginViaUI, pollUntil } from './helpers';
-import { E2E_ADMIN_PASSWORD, E2E_ADMIN_USERNAME } from './global-setup';
+import { expect, test, Page } from '@playwright/test';
+import { loginViaUI } from './helpers';
 
 /**
  * Minimal BloodHound v6 ingest JSON for a single domain.
@@ -51,109 +50,169 @@ const MINIMAL_DOMAIN_JSON = JSON.stringify({
     ],
 });
 
+/**
+ * Ingest domain data and run analysis via the UI.
+ */
+async function ingestAndAnalyzeViaUI(page: Page): Promise<void> {
+    // Navigate to File Ingest page
+    await page.goto('/ui/administration/file-ingest');
+    await page.waitForSelector('[data-testid="manual-file-ingest"]', { timeout: 15_000 });
+
+    // Upload domain JSON
+    const uploadBtn = page.getByTestId('file-ingest_button-upload-files');
+    await expect(uploadBtn).toBeVisible({ timeout: 10_000 });
+    await expect(uploadBtn).toBeEnabled({ timeout: 10_000 });
+    await uploadBtn.click();
+
+    const dialog = page.locator('[role="dialog"]');
+    await expect(dialog).toBeVisible({ timeout: 5_000 });
+
+    const fileInput = page.getByTestId('ingest-file-upload');
+    await fileInput.setInputFiles({
+        name: 'search-domains.json',
+        mimeType: 'application/json',
+        buffer: Buffer.from(MINIMAL_DOMAIN_JSON),
+    });
+
+    const confirmBtn = page.getByTestId('confirmation-dialog_button-yes');
+    await expect(confirmBtn).toBeEnabled({ timeout: 5_000 });
+    await confirmBtn.click();
+
+    await expect(dialog.locator('text=/successfully.*uploaded/i')).toBeVisible({ timeout: 30_000 });
+
+    const closeBtn = page.getByTestId('confirmation-dialog_button-no');
+    await closeBtn.click();
+    await expect(dialog).not.toBeVisible({ timeout: 5_000 });
+
+    // Wait for ingest to complete
+    await expect(async () => {
+        const rows = page.locator('table tbody tr');
+        const rowCount = await rows.count();
+        expect(rowCount, 'Ingest table should have rows').toBeGreaterThan(0);
+
+        const runningIndicators = page.locator('table tbody tr').filter({ hasText: /Running|Ingesting|Ready|Analyzing/ });
+        const activeCount = await runningIndicators.count();
+        expect(activeCount, 'No in-progress jobs should remain').toBe(0);
+
+        const completeIndicators = page.locator('table tbody tr').filter({ hasText: 'Complete' });
+        const completeCount = await completeIndicators.count();
+        expect(completeCount, 'At least one Complete job should exist').toBeGreaterThan(0);
+    }).toPass({ intervals: [1_000, 2_000, 2_000], timeout: 60_000 });
+
+    // Trigger analysis
+    await page.goto('/ui/administration/bloodhound-configuration');
+
+    const analyzeBtn = page.getByRole('button', { name: /Analyze Now/i });
+    await expect(analyzeBtn).toBeVisible({ timeout: 15_000 });
+    await expect(analyzeBtn).toBeEnabled({ timeout: 15_000 });
+
+    await analyzeBtn.click();
+
+    const confirmAnalysisBtn = page.getByRole('button', { name: /Confirm/i });
+    if (await confirmAnalysisBtn.isVisible({ timeout: 3_000 }).catch(() => false)) {
+        await confirmAnalysisBtn.click();
+    }
+
+    // Wait for analysis to complete (button re-enables)
+    await expect(analyzeBtn).toBeEnabled({ timeout: 60_000 });
+}
+
 test.describe('Explore: search and Cypher after ingest', () => {
     test.setTimeout(120_000);
 
-    test('search API returns results after data ingest', async ({ request }) => {
-        const token = await loginViaAPI(request);
-        const authHeaders = () => ({ Authorization: `Bearer ${token}` });
+    // Ingest data once for all tests in this describe block.
+    test.beforeAll(async ({ browser }) => {
+        const context = await browser.newContext();
+        const page = await context.newPage();
+        await loginViaUI(page);
+        await ingestAndAnalyzeViaUI(page);
+        await page.close();
+        await context.close();
+    });
 
-        await test.step('Ingest domain data', async () => {
-            const startResponse = await request.post('/api/v2/file-upload/start', {
-                headers: authHeaders(),
-            });
-            expect(startResponse.status()).toBe(201);
-            const startBody = await startResponse.json();
-            const jobId = startBody.data.id;
+    test('search returns results after data ingest', async ({ page }) => {
+        await loginViaUI(page);
 
-            const uploadResponse = await request.post(`/api/v2/file-upload/${jobId}`, {
-                headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-                data: MINIMAL_DOMAIN_JSON,
-            });
-            expect(uploadResponse.status()).toBe(202);
+        await test.step('Navigate to explore and search for ingested domain', async () => {
+            await page.goto('/ui/explore');
+            await page.waitForSelector('[data-testid="explore"]', { timeout: 15_000 });
 
-            const endResponse = await request.post(`/api/v2/file-upload/${jobId}/end`, {
-                headers: authHeaders(),
-            });
-            expect(endResponse.status()).toBe(200);
-
-            // Wait for the ingest job to reach a terminal state by polling
-            // the file-upload endpoint directly.
-            await pollUntil(
-                async () => {
-                    const jobsResponse = await request.get('/api/v2/file-upload', {
-                        headers: authHeaders(),
-                    });
-                    if (jobsResponse.status() !== 200) return false;
-                    const jobs = (await jobsResponse.json()).data;
-                    if (!Array.isArray(jobs) || jobs.length === 0) return false;
-                    const job = jobs[jobs.length - 1]; // latest job
-                    // Terminal states: 2=complete, 5=failed, 8=partially_complete
-                    return [2, 5, 8].includes(job.status);
-                },
-                { timeoutMs: 60_000, intervalMs: 1000, description: 'ingest job to reach terminal state' }
-            );
-        });
-
-        await test.step('Search API returns the ingested domain', async () => {
-            // The search endpoint may need analysis to run first, but domains
-            // should be discoverable after ingest even without analysis.
-            // Try searching; if empty, trigger analysis first.
-            let searchResponse = await request.get('/api/v2/search?q=SEARCHTEST', {
-                headers: authHeaders(),
-            });
-            expect(searchResponse.status()).toBe(200);
-            let searchBody = await searchResponse.json();
-
-            // If no results, trigger analysis and retry
-            if (!searchBody.data || searchBody.data.length === 0) {
-                await request.put('/api/v2/analysis', { headers: authHeaders() });
-                await pollUntil(
-                    async () => {
-                        const statusResponse = await request.get('/api/v2/datapipe/status', {
-                            headers: authHeaders(),
-                        });
-                        if (statusResponse.status() !== 200) return false;
-                        const body = await statusResponse.json();
-                        const lastAnalysis = body.data?.last_complete_analysis_at;
-                        return lastAnalysis && lastAnalysis !== '0001-01-01T00:00:00Z';
-                    },
-                    { timeoutMs: 60_000, intervalMs: 1000, description: 'analysis to complete' }
-                );
-
-                searchResponse = await request.get('/api/v2/search?q=SEARCHTEST', {
-                    headers: authHeaders(),
-                });
-                expect(searchResponse.status()).toBe(200);
-                searchBody = await searchResponse.json();
+            // Dismiss any dialog that covers the explore page
+            const dialog = page.getByRole('dialog');
+            if (await dialog.isVisible({ timeout: 3_000 }).catch(() => false)) {
+                await page.keyboard.press('Escape');
+                await dialog.waitFor({ state: 'hidden', timeout: 5_000 }).catch(() => {});
             }
 
-            // Verify search returned something (the data structure may vary)
-            expect(searchBody.data).toBeTruthy();
+            // Use the node search tab (default tab) to search for the domain
+            const searchContainer = page.getByTestId('explore_search_input-search');
+            await expect(searchContainer).toBeVisible({ timeout: 10_000 });
+            const searchInput = searchContainer.locator('input');
+            await searchInput.fill('SEARCHTEST');
+
+            // Wait for search results to appear
+            const resultList = page.getByTestId('explore_search_result-list');
+            await expect(resultList).toBeVisible({ timeout: 15_000 });
+
+            // Verify result list has items
+            const resultItems = page.getByTestId('explore_search_result-list-item');
+            await expect(resultItems.first()).toBeVisible({ timeout: 10_000 });
+            const itemCount = await resultItems.count();
+            expect(itemCount, 'Search should return at least one result').toBeGreaterThan(0);
         });
     });
 
-    test('Cypher query API returns results', async ({ request }) => {
-        const token = await loginViaAPI(request);
-        const authHeaders = () => ({ Authorization: `Bearer ${token}` });
+    test('Cypher query returns results', async ({ page }) => {
+        await loginViaUI(page);
 
-        await test.step('Execute a simple Cypher query', async () => {
-            const cypherResponse = await request.post('/api/v2/graphs/cypher', {
-                headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-                data: JSON.stringify({
-                    query: 'MATCH (n) RETURN n LIMIT 5',
-                    include_properties: true,
-                }),
-            });
-            // The API returns 200 when results are found, or 404 when the
-            // query executes successfully but returns no data (empty graph).
-            expect([200, 404]).toContain(cypherResponse.status());
-            const body = await cypherResponse.json();
-            if (cypherResponse.status() === 200) {
-                expect(body.data).toBeTruthy();
+        await test.step('Navigate to explore and run Cypher query', async () => {
+            await page.goto('/ui/explore');
+            await page.waitForSelector('[data-testid="explore"]', { timeout: 15_000 });
+
+            // Dismiss any dialog that covers the explore page
+            const dialog = page.getByRole('dialog');
+            if (await dialog.isVisible({ timeout: 3_000 }).catch(() => false)) {
+                await page.keyboard.press('Escape');
+                await dialog.waitFor({ state: 'hidden', timeout: 5_000 }).catch(() => {});
+            }
+
+            // Intercept the Cypher API response
+            const cypherResponsePromise = page.waitForResponse(
+                (res) => res.url().includes('/api/v2/graphs/cypher') && res.request().method() === 'POST',
+                { timeout: 30_000 }
+            ).catch(() => null);
+
+            // Click the Cypher tab
+            const cypherTab = page.getByTestId('explore_search-container_header_cypher-tab');
+            await cypherTab.click();
+            await expect(cypherTab).toHaveAttribute('aria-selected', 'true', { timeout: 5_000 });
+
+            // Wait for the Cypher editor (CodeMirror) to appear
+            const cmEditor = page.locator('.cm-editor');
+            await expect(cmEditor.first()).toBeVisible({ timeout: 10_000 });
+
+            // Focus the CodeMirror content area and type the query
+            const cmContent = page.locator('.cm-content');
+            await cmContent.first().click();
+
+            await page.keyboard.press('ControlOrMeta+a');
+            await page.keyboard.type('MATCH (n) RETURN n LIMIT 5', { delay: 10 });
+
+            // Execute the query with Shift+Enter
+            await page.keyboard.press('Shift+Enter');
+
+            // Verify the Cypher API was called and returned data
+            const cypherResponse = await cypherResponsePromise;
+            expect(cypherResponse, 'Cypher API response should have been received').not.toBeNull();
+            const responseStatus = cypherResponse!.status();
+            const responseBody = await cypherResponse!.json();
+            if (responseStatus === 200) {
+                expect(responseBody.data).toBeTruthy();
+                const nodeCount = responseBody?.data?.nodes ? Object.keys(responseBody.data.nodes).length : 0;
+                expect(nodeCount, 'Cypher response should contain nodes').toBeGreaterThan(0);
             } else {
                 // 404 means the query executed but found nothing
-                expect(body.errors).toBeTruthy();
+                expect([200, 404]).toContain(responseStatus);
             }
         });
     });

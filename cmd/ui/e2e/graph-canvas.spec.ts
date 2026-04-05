@@ -14,8 +14,8 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-import { APIRequestContext, Page, expect, test } from '@playwright/test';
-import { loginViaAPI, loginViaUI, pollUntil } from './helpers';
+import { Page, expect, test } from '@playwright/test';
+import { loginViaUI } from './helpers';
 
 /**
  * Minimal BloodHound v6 ingest data: one domain + one computer.
@@ -76,64 +76,81 @@ const MINIMAL_COMPUTER_JSON = JSON.stringify({
 });
 
 /**
- * Ingest domain + computer data and run analysis via the API.
- * Returns when the datapipe is idle after analysis completes.
+ * Upload a file via the File Ingest UI dialog.
  */
-async function ingestAndAnalyze(request: APIRequestContext): Promise<void> {
-    const token = await loginViaAPI(request);
-    const authHeaders = () => ({ Authorization: `Bearer ${token}` });
+async function uploadFileViaUI(page: Page, fileName: string, content: string): Promise<void> {
+    const uploadBtn = page.getByTestId('file-ingest_button-upload-files');
+    await expect(uploadBtn).toBeVisible({ timeout: 10_000 });
+    await expect(uploadBtn).toBeEnabled({ timeout: 10_000 });
+    await uploadBtn.click();
 
-    // Start ingest job
-    const startResponse = await request.post('/api/v2/file-upload/start', { headers: authHeaders() });
-    expect(startResponse.status()).toBe(201);
-    const jobId = (await startResponse.json()).data.id;
+    const dialog = page.locator('[role="dialog"]');
+    await expect(dialog).toBeVisible({ timeout: 5_000 });
+
+    const fileInput = page.getByTestId('ingest-file-upload');
+    await fileInput.setInputFiles({
+        name: fileName,
+        mimeType: 'application/json',
+        buffer: Buffer.from(content),
+    });
+
+    const confirmBtn = page.getByTestId('confirmation-dialog_button-yes');
+    await expect(confirmBtn).toBeEnabled({ timeout: 5_000 });
+    await confirmBtn.click();
+
+    await expect(dialog.locator('text=/successfully.*uploaded/i')).toBeVisible({ timeout: 30_000 });
+
+    const closeBtn = page.getByTestId('confirmation-dialog_button-no');
+    await closeBtn.click();
+    await expect(dialog).not.toBeVisible({ timeout: 5_000 });
+}
+
+/**
+ * Ingest domain + computer data and run analysis via the UI.
+ * Returns when analysis is complete (Analyze Now button re-enables).
+ */
+async function ingestAndAnalyzeViaUI(page: Page): Promise<void> {
+    // Navigate to File Ingest page
+    await page.goto('/ui/administration/file-ingest');
+    await page.waitForSelector('[data-testid="manual-file-ingest"]', { timeout: 15_000 });
 
     // Upload domain JSON
-    const domainResponse = await request.post(`/api/v2/file-upload/${jobId}`, {
-        headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-        data: MINIMAL_DOMAIN_JSON,
-    });
-    expect(domainResponse.status()).toBe(202);
+    await uploadFileViaUI(page, 'graph-domains.json', MINIMAL_DOMAIN_JSON);
 
     // Upload computer JSON
-    const computerResponse = await request.post(`/api/v2/file-upload/${jobId}`, {
-        headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-        data: MINIMAL_COMPUTER_JSON,
-    });
-    expect(computerResponse.status()).toBe(202);
+    await uploadFileViaUI(page, 'graph-computers.json', MINIMAL_COMPUTER_JSON);
 
-    // End ingest job
-    const endResponse = await request.post(`/api/v2/file-upload/${jobId}/end`, { headers: authHeaders() });
-    expect(endResponse.status()).toBe(200);
+    // Wait for ingest to complete
+    await expect(async () => {
+        const rows = page.locator('table tbody tr');
+        const rowCount = await rows.count();
+        expect(rowCount, 'Ingest table should have rows').toBeGreaterThan(0);
 
-    // Wait for the ingest job to reach a terminal state by polling
-    // the file-upload endpoint directly.
-    await pollUntil(
-        async () => {
-            const r = await request.get('/api/v2/file-upload', { headers: authHeaders() });
-            if (r.status() !== 200) return false;
-            const jobs = (await r.json()).data;
-            if (!Array.isArray(jobs) || jobs.length === 0) return false;
-            const job = jobs[jobs.length - 1];
-            return [2, 5, 8].includes(job.status);
-        },
-        { timeoutMs: 60_000, intervalMs: 1000, description: 'ingest job to reach terminal state' }
-    );
+        const runningIndicators = page.locator('table tbody tr').filter({ hasText: /Running|Ingesting|Ready|Analyzing/ });
+        const activeCount = await runningIndicators.count();
+        expect(activeCount, 'No in-progress jobs should remain').toBe(0);
+
+        const completeIndicators = page.locator('table tbody tr').filter({ hasText: 'Complete' });
+        const completeCount = await completeIndicators.count();
+        expect(completeCount, 'At least one Complete job should exist').toBeGreaterThan(0);
+    }).toPass({ intervals: [1_000, 2_000, 2_000], timeout: 60_000 });
 
     // Trigger analysis
-    await request.put('/api/v2/analysis', { headers: authHeaders() });
+    await page.goto('/ui/administration/bloodhound-configuration');
 
-    // Wait for analysis to complete by checking the last_complete_analysis_at timestamp
-    await pollUntil(
-        async () => {
-            const r = await request.get('/api/v2/datapipe/status', { headers: authHeaders() });
-            if (r.status() !== 200) return false;
-            const body = await r.json();
-            const lastAnalysis = body.data?.last_complete_analysis_at;
-            return lastAnalysis && lastAnalysis !== '0001-01-01T00:00:00Z';
-        },
-        { timeoutMs: 60_000, intervalMs: 1000, description: 'analysis complete (last_complete_analysis_at set)' }
-    );
+    const analyzeBtn = page.getByRole('button', { name: /Analyze Now/i });
+    await expect(analyzeBtn).toBeVisible({ timeout: 15_000 });
+    await expect(analyzeBtn).toBeEnabled({ timeout: 15_000 });
+
+    await analyzeBtn.click();
+
+    const confirmBtn = page.getByRole('button', { name: /Confirm/i });
+    if (await confirmBtn.isVisible({ timeout: 3_000 }).catch(() => false)) {
+        await confirmBtn.click();
+    }
+
+    // Wait for analysis to complete (button re-enables)
+    await expect(analyzeBtn).toBeEnabled({ timeout: 60_000 });
 }
 
 /**
@@ -180,8 +197,13 @@ test.describe('Graph canvas: Sigma renders nodes after data ingest', () => {
     test.setTimeout(120_000);
 
     // Ingest data once for all tests in this describe block.
-    test.beforeAll(async ({ request }) => {
-        await ingestAndAnalyze(request);
+    test.beforeAll(async ({ browser }) => {
+        const context = await browser.newContext();
+        const page = await context.newPage();
+        await loginViaUI(page);
+        await ingestAndAnalyzeViaUI(page);
+        await page.close();
+        await context.close();
     });
 
     test('sigma container mounts with canvas layers on the explore page', async ({ page }) => {
@@ -232,16 +254,22 @@ test.describe('Graph canvas: Sigma renders nodes after data ingest', () => {
 
     test('sigma graph node count matches expected ingest data', async ({ page }) => {
         await loginViaUI(page);
+        await page.goto('/ui/explore');
+        await page.waitForSelector('[data-testid="explore"]', { timeout: 15_000 });
 
-        // Use the API directly to verify the correct node count.
-        // The Cypher query returns our ingested domain + computer + analysis-generated nodes.
-        const token = await loginViaAPI(page.request);
-        const cypherResponse = await page.request.post('/api/v2/graphs/cypher', {
-            headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-            data: JSON.stringify({ query: "MATCH (n) WHERE n.domain = 'GRAPHTEST.LOCAL' RETURN n", include_properties: true }),
-        });
-        expect(cypherResponse.status()).toBe(200);
-        const body = await cypherResponse.json();
+        // Intercept the Cypher API response to verify node count
+        const cypherResponsePromise = page.waitForResponse(
+            (res) => res.url().includes('/api/v2/graphs/cypher') && res.request().method() === 'POST',
+            { timeout: 30_000 }
+        ).catch(() => null);
+
+        // Run a Cypher query filtering to our test domain
+        await runCypherQueryInUI(page, "MATCH (n) WHERE n.domain = 'GRAPHTEST.LOCAL' RETURN n");
+
+        const cypherResponse = await cypherResponsePromise;
+        expect(cypherResponse, 'Cypher API response should have been received').not.toBeNull();
+        expect(cypherResponse!.status()).toBe(200);
+        const body = await cypherResponse!.json();
         const nodeCount = body?.data?.nodes ? Object.keys(body.data.nodes).length : 0;
         // We ingested 1 domain + 1 computer; analysis creates additional well-known
         // group nodes, so assert at least 2.

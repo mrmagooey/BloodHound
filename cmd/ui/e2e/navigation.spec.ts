@@ -17,12 +17,7 @@
 import { expect, test } from '@playwright/test';
 
 test.describe('Navigation', () => {
-    test.beforeEach(async ({ request, page }) => {
-        // Verify self endpoint returns a user before proceeding
-        const response = await request.get('/api/v2/self');
-        const body = await response.json();
-        expect(body.data).not.toBeNull();
-
+    test.beforeEach(async ({ page }) => {
         // Use an admin page instead of /ui/explore to avoid the NoDataFileUpload
         // dialog that covers the explore page and intercepts pointer events when
         // the graph is empty.

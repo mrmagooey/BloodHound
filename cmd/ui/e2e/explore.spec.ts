@@ -17,12 +17,7 @@
 import { expect, test } from '@playwright/test';
 
 test.describe('Explore / Graph Explorer', () => {
-    test.beforeEach(async ({ request, page }) => {
-        // Verify self endpoint returns a user before proceeding
-        const response = await request.get('/api/v2/self');
-        const body = await response.json();
-        expect(body.data).not.toBeNull();
-
+    test.beforeEach(async ({ page }) => {
         await page.goto('/ui/explore');
         await page.waitForSelector('[data-testid="explore"]', { timeout: 15_000 });
 
