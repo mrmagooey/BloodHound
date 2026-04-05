@@ -255,18 +255,51 @@ func (b *Batch) UpdateNodeBy(update graph.NodeUpdate) error {
 
 	var propsMap map[string]any
 	if update.Node.Properties != nil {
-		propsMap = update.Node.Properties.Map
+		// Copy to avoid mutating the caller's properties map.
+		propsMap = make(map[string]any, len(update.Node.Properties.Map))
+		for k, v := range update.Node.Properties.Map {
+			propsMap[k] = v
+		}
 	} else {
 		propsMap = map[string]any{}
 	}
 
 	// Store extra kinds as a __kinds property so they're queryable.
+	// Use kindsWritten to prevent UpdateRelationshipBy from later overwriting
+	// correct full kinds with incomplete kinds from relationship stub nodes.
 	if len(update.Node.Kinds) > 1 {
-		allKinds := make([]string, len(update.Node.Kinds))
-		for i, k := range update.Node.Kinds {
-			allKinds[i] = k.String()
+		if objID, ok := identityMap["objectid"]; ok {
+			if key, ok := objID.(string); ok {
+				if b.kindsWritten == nil {
+					b.kindsWritten = make(map[string]bool, 1024)
+				}
+				if !b.kindsWritten[key] {
+					allKinds := make([]string, len(update.Node.Kinds))
+					for i, k := range update.Node.Kinds {
+						allKinds[i] = k.String()
+					}
+					propsMap["__kinds"] = allKinds
+					b.kindsWritten[key] = true
+				}
+				// else: this node's kinds were already written (either by a prior
+				// UpdateNodeBy or by UpdateRelationshipBy); skip to preserve the
+				// first (most complete) kind set.
+			} else {
+				// objectid is not a string; fall back to always writing kinds.
+				allKinds := make([]string, len(update.Node.Kinds))
+				for i, k := range update.Node.Kinds {
+					allKinds[i] = k.String()
+				}
+				propsMap["__kinds"] = allKinds
+			}
+		} else {
+			// No objectid identity property; fall back to always writing kinds.
+			allKinds := make([]string, len(update.Node.Kinds))
+			for i, k := range update.Node.Kinds {
+				allKinds[i] = k.String()
+			}
+			propsMap["__kinds"] = allKinds
 		}
-		propsMap["__kinds"] = allKinds
 	}
 
 	identityPattern, identityParams := propsPattern("id_", identityMap)
