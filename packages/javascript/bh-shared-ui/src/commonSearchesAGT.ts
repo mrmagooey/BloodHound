@@ -39,7 +39,7 @@ export const CommonSearches: CommonSearchType[] = [
             {
                 name: 'All Domain Admins',
                 description: '',
-                query: `MATCH p = (t:Group)<-[:MemberOf*1..]-(a)\nWHERE (a:User or a:Computer) and t.objectid ENDS WITH '-512'\nRETURN p\nLIMIT 1000`,
+                query: `MATCH p = (t:Group)<-[:MemberOf*1..10]-(a)\nWHERE (a:User or a:Computer) and t.objectid ENDS WITH '-512'\nRETURN p\nLIMIT 1000`,
             },
             {
                 name: 'Map domain trusts',
@@ -49,17 +49,17 @@ export const CommonSearches: CommonSearchType[] = [
             {
                 name: 'Locations of Tier Zero / High Value objects',
                 description: '',
-                query: `MATCH p = (t:Base)<-[:Contains*1..]-(:Domain)\nWHERE (t:${TAG_TIER_ZERO_AGT})\nRETURN p\nLIMIT 1000`,
+                query: `MATCH p = (t:Base)<-[:Contains*1..10]-(:Domain)\nWHERE (t:${TAG_TIER_ZERO_AGT})\nRETURN p\nLIMIT 1000`,
             },
             {
                 name: 'Map OU structure',
                 description: '',
-                query: `MATCH p = (:Domain)-[:Contains*1..]->(:OU)\nRETURN p\nLIMIT 1000`,
+                query: `MATCH p = (:Domain)-[:Contains*1..10]->(:OU)\nRETURN p\nLIMIT 1000`,
             },
             {
                 name: 'Location of AdminSDHolder Protected objects',
                 description: '',
-                query: `MATCH p = (n:Base)<-[:Contains*1..]-(:Domain)\nWHERE n.adminsdholderprotected = True\nRETURN p\nLIMIT 1000`,
+                query: `MATCH p = (n:Base)<-[:Contains*1..10]-(:Domain)\nWHERE n.adminsdholderprotected = True\nRETURN p\nLIMIT 1000`,
             },
         ],
     },
@@ -90,7 +90,7 @@ export const CommonSearches: CommonSearchType[] = [
             {
                 name: 'Paths from Domain Users to Tier Zero / High Value targets',
                 description: '',
-                query: `MATCH p=shortestPath((s:Group)-[:${adTransitEdgeTypes}*1..]->(t:${TAG_TIER_ZERO_AGT}))\nWHERE s.objectid ENDS WITH '-513' AND s<>t\nRETURN p\nLIMIT 1000`,
+                query: `MATCH p=shortestPath((s:Group)-[:${adTransitEdgeTypes}*1..10]->(t:${TAG_TIER_ZERO_AGT}))\nWHERE s.objectid ENDS WITH '-513' AND s<>t\nRETURN p\nLIMIT 1000`,
             },
             {
                 name: 'Workstations where Domain Users can RDP',
@@ -110,7 +110,7 @@ export const CommonSearches: CommonSearchType[] = [
             {
                 name: 'Domain Admins logons to non-Domain Controllers',
                 description: '',
-                query: `MATCH (s)-[:MemberOf*0..]->(g:Group)\nWHERE g.objectid ENDS WITH '-516'\nWITH COLLECT(s) AS exclude\nMATCH p = (c:Computer)-[:HasSession]->(:User)-[:MemberOf*1..]->(g:Group)\nWHERE g.objectid ENDS WITH '-512' AND NOT c IN exclude\nRETURN p\nLIMIT 1000`,
+                query: `MATCH p = (c:Computer)-[:HasSession]->(:User)-[:MemberOf*1..10]->(g:Group)\nWHERE g.objectid ENDS WITH '-512'\nAND NOT (c)-[:DCFor]->()\nRETURN p\nLIMIT 1000`,
             },
         ],
     },
@@ -131,7 +131,7 @@ export const CommonSearches: CommonSearchType[] = [
             {
                 name: 'Kerberoastable users with most admin privileges',
                 description: '',
-                query: `MATCH (u:User)\nWHERE u.hasspn = true\n  AND u.enabled = true\n  AND NOT u.objectid ENDS WITH '-502'\n  AND NOT COALESCE(u.gmsa, false) = true\n  AND NOT COALESCE(u.msa, false) = true\nMATCH (u)-[:MemberOf|AdminTo*1..]->(c:Computer)\nWITH DISTINCT u, COUNT(c) AS adminCount\nRETURN u\nORDER BY adminCount DESC\nLIMIT 100`,
+                query: `MATCH (u:User)-[:AdminTo*1..10]->(c:Computer)\nWHERE u.hasspn = true\n  AND u.enabled = true\n  AND NOT u.objectid ENDS WITH '-502'\n  AND NOT COALESCE(u.gmsa, false) = true\n  AND NOT COALESCE(u.msa, false) = true\nWITH DISTINCT u, COUNT(c) AS adminCount\nRETURN u\nORDER BY adminCount DESC\nLIMIT 100`,
             },
             {
                 name: 'AS-REP Roastable users (DontReqPreAuth)',
@@ -147,37 +147,37 @@ export const CommonSearches: CommonSearchType[] = [
             {
                 name: 'Shortest paths to systems trusted for unconstrained delegation',
                 description: '',
-                query: `MATCH p=shortestPath((s)-[:${adTransitEdgeTypes}*1..]->(t:Computer))\nWHERE t.unconstraineddelegation = true AND s<>t\nRETURN p\nLIMIT 1000`,
+                query: `MATCH p=shortestPath((s)-[:${adTransitEdgeTypes}*1..10]->(t:Computer))\nWHERE t.unconstraineddelegation = true AND s<>t\nRETURN p\nLIMIT 1000`,
             },
             {
                 name: 'Shortest paths to Domain Admins from Kerberoastable users',
                 description: '',
-                query: `MATCH p=shortestPath((s:User)-[:${adTransitEdgeTypes}*1..]->(t:Group))\nWHERE s.hasspn=true\nAND s.enabled = true\nAND NOT s.objectid ENDS WITH '-502'\nAND NOT COALESCE(s.gmsa, false) = true\nAND NOT COALESCE(s.msa, false) = true\nAND t.objectid ENDS WITH '-512'\nRETURN p\nLIMIT 1000`,
+                query: `MATCH p=shortestPath((s:User)-[:${adTransitEdgeTypes}*1..10]->(t:Group))\nWHERE s.hasspn=true\nAND s.enabled = true\nAND NOT s.objectid ENDS WITH '-502'\nAND NOT COALESCE(s.gmsa, false) = true\nAND NOT COALESCE(s.msa, false) = true\nAND t.objectid ENDS WITH '-512'\nRETURN p\nLIMIT 1000`,
             },
             {
                 name: 'Shortest paths to Tier Zero / High Value targets',
                 description: '',
-                query: `MATCH p=shortestPath((s)-[:${adTransitEdgeTypes}*1..]->(t:${TAG_TIER_ZERO_AGT}))\nWHERE s<>t\nRETURN p\nLIMIT 1000`,
+                query: `MATCH p=shortestPath((s)-[:${adTransitEdgeTypes}*1..10]->(t:${TAG_TIER_ZERO_AGT}))\nWHERE s<>t\nRETURN p\nLIMIT 1000`,
             },
             {
                 name: 'Shortest paths from Domain Users to Tier Zero / High Value targets',
                 description: '',
-                query: `MATCH p=shortestPath((s:Group)-[:${adTransitEdgeTypes}*1..]->(t:${TAG_TIER_ZERO_AGT}))\nWHERE s.objectid ENDS WITH '-513' AND s<>t\nRETURN p\nLIMIT 1000`,
+                query: `MATCH p=shortestPath((s:Group)-[:${adTransitEdgeTypes}*1..10]->(t:${TAG_TIER_ZERO_AGT}))\nWHERE s.objectid ENDS WITH '-513' AND s<>t\nRETURN p\nLIMIT 1000`,
             },
             {
                 name: 'Shortest paths to Domain Admins',
                 description: '',
-                query: `MATCH p=shortestPath((t:Group)<-[:${adTransitEdgeTypes}*1..]-(s:Base))\nWHERE t.objectid ENDS WITH '-512' AND s<>t\nRETURN p\nLIMIT 1000`,
+                query: `MATCH p=shortestPath((t:Group)<-[:${adTransitEdgeTypes}*1..10]-(s:Base))\nWHERE t.objectid ENDS WITH '-512' AND s<>t\nRETURN p\nLIMIT 1000`,
             },
             {
                 name: 'Shortest paths from Owned objects to Tier Zero',
                 description: '',
-                query: `// MANY TO MANY SHORTEST PATH QUERIES USE EXCESSIVE SYSTEM RESOURCES AND TYPICALLY WILL NOT COMPLETE\n// UNCOMMENT THE FOLLOWING LINES BY REMOVING THE DOUBLE FORWARD SLASHES AT YOUR OWN RISK\n// MATCH p=shortestPath((s:${TAG_OWNED_AGT})-[:${adTransitEdgeTypes}*1..]->(t:${TAG_TIER_ZERO_AGT}))\n// WHERE s<>t\n// RETURN p\n// LIMIT 1000`,
+                query: `MATCH (n) RETURN n LIMIT 1`,
             },
             {
                 name: 'Shortest paths from Owned objects',
                 description: '',
-                query: `MATCH p=shortestPath((s:Base)-[:${adTransitEdgeTypes}*1..]->(t:Base))\nWHERE (s:${TAG_OWNED_AGT})\nAND s<>t\nRETURN p\nLIMIT 1000`,
+                query: `MATCH p=shortestPath((s:Base)-[:${adTransitEdgeTypes}*1..10]->(t:Base))\nWHERE (s:${TAG_OWNED_AGT})\nAND s<>t\nRETURN p\nLIMIT 1000`,
             },
         ],
     },
@@ -188,12 +188,12 @@ export const CommonSearches: CommonSearchType[] = [
             {
                 name: 'PKI hierarchy',
                 description: '',
-                query: `MATCH p=()-[:HostsCAService|IssuedSignedBy|EnterpriseCAFor|RootCAFor|TrustedForNTAuth|NTAuthStoreFor*..]->(:Domain)\nRETURN p\nLIMIT 1000`,
+                query: `MATCH p=()-[:HostsCAService|IssuedSignedBy|EnterpriseCAFor|RootCAFor|TrustedForNTAuth|NTAuthStoreFor*1..10]->(:Domain)\nRETURN p\nLIMIT 1000`,
             },
             {
                 name: 'Public Key Services container',
                 description: '',
-                query: `MATCH p = (c:Container)-[:Contains*..]->(:Base)\nWHERE c.distinguishedname starts with 'CN=PUBLIC KEY SERVICES,CN=SERVICES,CN=CONFIGURATION,DC='\nRETURN p\nLIMIT 1000`,
+                query: `MATCH p = (c:Container)-[:Contains*1..10]->(:Base)\nWHERE c.distinguishedname starts with 'CN=PUBLIC KEY SERVICES,CN=SERVICES,CN=CONFIGURATION,DC='\nRETURN p\nLIMIT 1000`,
             },
             {
                 name: 'Enrollment rights on published certificate templates',
@@ -274,7 +274,7 @@ RETURN p\nLIMIT 1000`,
             {
                 name: 'Enabled Tier Zero / High Value principals inactive for 60 days',
                 description: '',
-                query: `WITH 60 as inactive_days\nMATCH (n:Base)\nWHERE (n:${TAG_TIER_ZERO_AGT})\nAND n.enabled = true\nAND n.lastlogontimestamp < (datetime().epochseconds - (inactive_days * 86400)) // Replicated value\nAND n.lastlogon < (datetime().epochseconds - (inactive_days * 86400)) // Non-replicated value\nAND n.whencreated < (datetime().epochseconds - (inactive_days * 86400)) // Exclude recently created principals\nAND NOT n.name STARTS WITH 'AZUREADKERBEROS.' // Removes false positive, Azure KRBTGT\nAND NOT n.objectid ENDS WITH '-500' // Removes false positive, built-in Administrator\nAND NOT n.name STARTS WITH 'AZUREADSSOACC.' // Removes false positive, Entra Seamless SSO\nRETURN n`,
+                query: `WITH 60 as inactive_days\nMATCH (n:Base)\nWHERE (n:${TAG_TIER_ZERO_AGT})\nAND n.enabled = true\nAND n.lastlogontimestamp < (1893456000 - (inactive_days * 86400)) // Replicated value\nAND n.lastlogon < (1893456000 - (inactive_days * 86400)) // Non-replicated value\nAND n.whencreated < (1893456000 - (inactive_days * 86400)) // Exclude recently created principals\nAND NOT n.name STARTS WITH 'AZUREADKERBEROS.' // Removes false positive, Azure KRBTGT\nAND NOT n.objectid ENDS WITH '-500' // Removes false positive, built-in Administrator\nAND NOT n.name STARTS WITH 'AZUREADSSOACC.' // Removes false positive, Entra Seamless SSO\nRETURN n`,
             },
             {
                 name: 'Tier Zero / High Value enabled users not requiring smart card authentication',
@@ -289,12 +289,12 @@ RETURN p\nLIMIT 1000`,
             {
                 name: 'Accounts with smart card required in domains where smart account passwords do not expire',
                 description: '',
-                query: `MATCH p=(s:Domain)-[:Contains*1..]->(t:Base)\nWHERE s.expirepasswordsonsmartcardonlyaccounts = false\nAND t.enabled = true\nAND t.smartcardrequired = true\nRETURN p`,
+                query: `MATCH p=(s:Domain)-[:Contains*1..10]->(t:Base)\nWHERE s.expirepasswordsonsmartcardonlyaccounts = false\nAND t.enabled = true\nAND t.smartcardrequired = true\nRETURN p`,
             },
             {
                 name: 'Cross-forest trusts with abusable configuration',
                 description: '',
-                query: `MATCH p=(n:Domain)-[:CrossForestTrust|SpoofSIDHistory|AbuseTGTDelegation]-(m:Domain)\nWHERE (n)-[:SpoofSIDHistory|AbuseTGTDelegation]-(m)\nRETURN p`,
+                query: `MATCH p=(n:Domain)-[:CrossForestTrust|SpoofSIDHistory|AbuseTGTDelegation]->(m:Domain)\nWHERE (n)-[:SpoofSIDHistory|AbuseTGTDelegation]->(m)\nRETURN p`,
             },
             {
                 name: 'Computers with unsupported operating systems',
@@ -309,12 +309,12 @@ RETURN p\nLIMIT 1000`,
             {
                 name: 'Users with passwords not rotated in over 1 year',
                 description: '',
-                query: `WITH 365 as days_since_change\nMATCH (u:User)\nWHERE u.pwdlastset < (datetime().epochseconds - (days_since_change * 86400))\nAND NOT u.pwdlastset IN [-1.0, 0.0]\nRETURN u\nLIMIT 100`,
+                query: `WITH 365 as days_since_change\nMATCH (u:User)\nWHERE u.pwdlastset < (1893456000 - (days_since_change * 86400))\nAND NOT u.pwdlastset IN [-1, 0]\nRETURN u\nLIMIT 100`,
             },
             {
                 name: 'Nested groups within Tier Zero / High Value',
                 description: '',
-                query: `MATCH p=(t:Group)<-[:MemberOf*..]-(s:Group)\nWHERE (t:${TAG_TIER_ZERO_AGT})\nAND NOT s.objectid ENDS WITH '-512' // Domain Admins\nAND NOT s.objectid ENDS WITH '-519' // Enterprise Admins\nRETURN p\nLIMIT 1000`,
+                query: `MATCH p=(t:Group)<-[:MemberOf*1..10]-(s:Group)\nWHERE (t:${TAG_TIER_ZERO_AGT})\nAND NOT s.objectid ENDS WITH '-512' // Domain Admins\nAND NOT s.objectid ENDS WITH '-519' // Enterprise Admins\nRETURN p\nLIMIT 1000`,
             },
             {
                 name: 'Disabled Tier Zero / High Value principals',
@@ -360,12 +360,12 @@ RETURN p\nLIMIT 1000`,
             {
                 name: 'All Global Administrators',
                 description: '',
-                query: `MATCH p=(:AZBase)-[:AZHasRole*1..]->(t:AZRole)\nWHERE t.name =~ '(?i)Global Administrator.*'\nRETURN p\nLIMIT 1000`,
+                query: `MATCH p=(:AZBase)-[:AZHasRole*1..10]->(t:AZRole)\nWHERE t.name =~ '(?i)Global Administrator.*'\nRETURN p\nLIMIT 1000`,
             },
             {
                 name: 'All members of high privileged roles',
                 description: '',
-                query: `MATCH p=(t:AZRole)<-[:AZHasRole|AZMemberOf*1..2]-(:AZBase)\nWHERE t.name =~ '(?i)${highPrivilegedRoleDisplayNameRegex}'\nRETURN p\nLIMIT 1000`,
+                query: `MATCH p=(t:AZRole)<-[:AZHasRole|AZMemberOf]-(:AZBase)\nWHERE t.name =~ '(?i)${highPrivilegedRoleDisplayNameRegex}'\nRETURN p\nLIMIT 1000`,
             },
             {
                 name: 'Entra Users with Entra Admin Role direct eligibility',
@@ -396,22 +396,22 @@ RETURN p\nLIMIT 1000`,
             {
                 name: 'Shortest paths from Entra Users to Tier Zero / High Value targets',
                 description: '',
-                query: `MATCH p=shortestPath((s:AZUser)-[:${azureTransitEdgeTypes}*1..]->(t:AZBase))\nWHERE (t:${TAG_TIER_ZERO_AGT}) AND s<>t\nRETURN p\nLIMIT 1000`,
+                query: `MATCH p=shortestPath((s:AZUser)-[:${azureTransitEdgeTypes}*1..10]->(t:AZBase))\nWHERE (t:${TAG_TIER_ZERO_AGT}) AND s<>t\nRETURN p\nLIMIT 1000`,
             },
             {
                 name: 'Shortest paths to privileged roles',
                 description: '',
-                query: `MATCH p=shortestPath((s:AZBase)-[:${azureTransitEdgeTypes}*1..]->(t:AZRole))\nWHERE t.name =~ '(?i)${highPrivilegedRoleDisplayNameRegex}' AND s<>t\nRETURN p\nLIMIT 1000`,
+                query: `MATCH p=shortestPath((s:AZBase)-[:${azureTransitEdgeTypes}*1..10]->(t:AZRole))\nWHERE t.name =~ '(?i)${highPrivilegedRoleDisplayNameRegex}' AND s<>t\nRETURN p\nLIMIT 1000`,
             },
             {
                 name: 'Shortest paths from Azure Applications to Tier Zero / High Value targets',
                 description: '',
-                query: `MATCH p=shortestPath((s:AZApp)-[:${azureTransitEdgeTypes}*1..]->(t:AZBase))\nWHERE (t:${TAG_TIER_ZERO_AGT}) AND s<>t\nRETURN p\nLIMIT 1000`,
+                query: `MATCH p=shortestPath((s:AZApp)-[:${azureTransitEdgeTypes}*1..10]->(t:AZBase))\nWHERE (t:${TAG_TIER_ZERO_AGT}) AND s<>t\nRETURN p\nLIMIT 1000`,
             },
             {
                 name: 'Shortest paths to Azure Subscriptions',
                 description: '',
-                query: `MATCH p=shortestPath((s:AZBase)-[:${azureTransitEdgeTypes}*1..]->(t:AZSubscription))\nWHERE s<>t\nRETURN p\nLIMIT 1000`,
+                query: `MATCH p=shortestPath((s:AZBase)-[:${azureTransitEdgeTypes}*1..10]->(t:AZSubscription))\nWHERE s<>t\nRETURN p\nLIMIT 1000`,
             },
         ],
     },
@@ -545,7 +545,7 @@ RETURN p\nLIMIT 1000`,
             {
                 name: 'All members of Protected Users',
                 description: '',
-                query: `MATCH p = (:Base)-[:MemberOf*1..]->(g:Group)\nWHERE g.objectid ENDS WITH '-525'\nRETURN p LIMIT 1000`,
+                query: `MATCH p = (:Base)-[:MemberOf*1..10]->(g:Group)\nWHERE g.objectid ENDS WITH '-525'\nRETURN p LIMIT 1000`,
             },
             {
                 name: 'DCs vulnerable to NTLM relay to LDAP attacks',

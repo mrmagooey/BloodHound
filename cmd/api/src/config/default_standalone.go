@@ -64,7 +64,7 @@ func NewDefaultConfiguration() (Configuration, error) {
 			EnableStartupWaitPeriod:         true,
 			EnableAPILogging:                true,
 			DisableAnalysis:                 false,
-			DisableCypherComplexityLimit:    false,
+			DisableCypherComplexityLimit:    true,
 			DisableIngest:                   false,
 			DisableMigrations:               false,
 			EnableCypherMutations:           false,
