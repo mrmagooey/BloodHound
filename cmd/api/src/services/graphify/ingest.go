@@ -70,6 +70,9 @@ type IngestContext struct {
 	EndpointResolver *endpoint.Resolver
 	// RetainIngestedFiles determines if the service should clean up working files after ingest
 	RetainIngestedFiles bool
+	// RetainedFilesDir is the directory where ingest files are moved when RetainIngestedFiles is true.
+	// When empty, files are deleted even if RetainIngestedFiles is set.
+	RetainedFilesDir string
 }
 
 func NewIngestContext(ctx context.Context, opts ...IngestOption) *IngestContext {
@@ -102,6 +105,12 @@ func WithIngestTime(ingestTime time.Time) IngestOption {
 func WithIngestRetentionConfig(shouldRetainIngestedFiles bool) IngestOption {
 	return func(s *IngestContext) {
 		s.RetainIngestedFiles = shouldRetainIngestedFiles
+	}
+}
+
+func WithRetainedFilesDir(dir string) IngestOption {
+	return func(s *IngestContext) {
+		s.RetainedFilesDir = dir
 	}
 }
 

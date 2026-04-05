@@ -24,6 +24,7 @@ import (
 	"io/fs"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/specterops/bloodhound/cmd/api/src/model"
@@ -208,9 +209,13 @@ func (s *GraphifyService) ProcessIngestFile(ic *IngestContext, task model.Ingest
 }
 
 func (s *GraphifyService) NewIngestContext(ctx context.Context, ingestTime time.Time, useChangelog bool) *IngestContext {
+	shouldRetain := appcfg.ShouldRetainIngestedFiles(ctx, s.db)
+
 	opts := []IngestOption{
 		WithIngestTime(ingestTime),
 		WithEndpointResolver(s.endpointResolver),
+		WithIngestRetentionConfig(shouldRetain),
+		WithRetainedFilesDir(s.cfg.RetainedFilesDirectory()),
 	}
 
 	if useChangelog {
@@ -237,15 +242,33 @@ func processSingleFile(ctx context.Context, fileData IngestFileData, ingestConte
 	defer func() {
 		file.Close()
 
-		// Always remove the file after attempting to ingest it. Even if it failed
-		if err := os.Remove(fileData.Path); err != nil && !errors.Is(err, fs.ErrNotExist) {
-			slog.ErrorContext(
-				ctx,
-				"Error removing ingest file",
-				slog.String("filepath", fileData.Path),
-				attr.Error(err),
-			)
+		retainedDir := ingestContext.RetainedFilesDir
+		// Retain the file if retention is enabled AND the file is not already in the retained
+		// directory (which happens during startup re-ingest of previously retained files).
+		if ingestContext.RetainIngestedFiles && retainedDir != "" &&
+			filepath.Dir(fileData.Path) != retainedDir {
+			dest := filepath.Join(retainedDir, filepath.Base(fileData.Path)+".json")
+			if renameErr := os.Rename(fileData.Path, dest); renameErr != nil {
+				// os.Rename fails across filesystems; fall back to copy + delete.
+				if copyErr := copyFileContents(fileData.Path, dest); copyErr != nil {
+					slog.WarnContext(ctx, "Failed to retain ingest file, deleting instead",
+						slog.String("src", fileData.Path),
+						slog.String("dest", dest),
+						attr.Error(copyErr),
+					)
+				}
+				os.Remove(fileData.Path)
+			}
+		} else if !ingestContext.RetainIngestedFiles {
+			// Normal path: delete the file after processing.
+			if err := os.Remove(fileData.Path); err != nil && !errors.Is(err, fs.ErrNotExist) {
+				slog.ErrorContext(ctx, "Error removing ingest file",
+					slog.String("filepath", fileData.Path),
+					attr.Error(err),
+				)
+			}
 		}
+		// else: file is already in the retained directory — leave it in place.
 	}()
 
 	if err := ReadFileForIngest(ingestContext, file, readOpts); err != nil {
@@ -340,6 +363,25 @@ func (s *GraphifyService) ProcessTasks(updateJob UpdateJobFunc) {
 	if flagChangeLogEnabled {
 		s.changeManager.FlushStats()
 	}
+}
+
+// copyFileContents copies the contents of src to dst. Used as a fallback when os.Rename fails
+// across filesystem boundaries (e.g., when /tmp is on a different device than the data directory).
+func copyFileContents(src, dst string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+
+	out, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+
+	_, err = io.Copy(out, in)
+	return err
 }
 
 // RegisterSourceKind - returns a function that will register a source kind and then refresh the in-memory DAWGS kind map

@@ -20,6 +20,8 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/specterops/bloodhound/cmd/api/src/api"
@@ -37,11 +39,13 @@ import (
 	"github.com/specterops/bloodhound/cmd/api/src/daemons/gc"
 	"github.com/specterops/bloodhound/cmd/api/src/database"
 	"github.com/specterops/bloodhound/cmd/api/src/migrations"
+	"github.com/specterops/bloodhound/cmd/api/src/model"
 	"github.com/specterops/bloodhound/cmd/api/src/model/appcfg"
 	"github.com/specterops/bloodhound/cmd/api/src/queries"
 	"github.com/specterops/bloodhound/cmd/api/src/services/dogtags"
 	"github.com/specterops/bloodhound/cmd/api/src/services/opengraphschema"
 	"github.com/specterops/bloodhound/cmd/api/src/services/upload"
+	"github.com/specterops/bloodhound/cmd/api/src/database/types/null"
 	"github.com/specterops/bloodhound/packages/go/cache"
 	schema "github.com/specterops/bloodhound/packages/go/graphschema"
 	"github.com/specterops/dawgs/graph"
@@ -168,7 +172,15 @@ func Entrypoint(ctx context.Context, cfg config.Configuration, connections boots
 		registration.RegisterFossGlobalMiddleware(&routerInst, cfg, auth.NewIdentityResolver(), authenticator, connections.RDMS)
 		registration.RegisterFossRoutes(&routerInst, cfg, connections.RDMS, connections.Graph, graphQuery, apiCache, collectorManifests, authenticator, authorizer, ingestSchema, dogtagsService, openGraphSchemaService)
 
-		if !standaloneMode {
+		if standaloneMode {
+			// In standalone mode, kglite does not persist node properties (other than "name")
+			// across save/load cycles. If retained ingest files exist and the graph has no
+			// node properties, schedule re-ingest tasks so the datapipe can rebuild the graph
+			// on its first tick (which fires immediately at startup with startDelay=0).
+			if err := scheduleRehydrationIfNeeded(ctx, cfg, connections); err != nil {
+				slog.WarnContext(ctx, fmt.Sprintf("startup graph rehydration check failed: %v", err))
+			}
+		} else {
 			// Set neo4j batch and flush sizes from database parameters
 			neo4jParameters := appcfg.GetNeo4jParameters(ctx, connections.RDMS)
 			connections.Graph.SetBatchWriteSize(neo4jParameters.BatchWriteSize)
@@ -191,4 +203,95 @@ func Entrypoint(ctx context.Context, cfg config.Configuration, connections boots
 			datapipeDaemon,
 		}, nil
 	}
+}
+
+// scheduleRehydrationIfNeeded checks whether graph node properties were lost when kglite loaded
+// from disk (a known kglite limitation: only the "name" property survives save/load). If retained
+// ingest files exist and the graph has no objectid properties, it creates synthetic ingest tasks
+// so the datapipe will re-ingest the files on its first tick and restore the graph.
+func scheduleRehydrationIfNeeded(
+	ctx context.Context,
+	cfg config.Configuration,
+	connections bootstrap.DatabaseConnections[*database.BloodhoundDB, *graph.DatabaseSwitch],
+) error {
+	// Check whether any retained ingest files exist.
+	retainedDir := cfg.RetainedFilesDirectory()
+	entries, err := os.ReadDir(retainedDir)
+	if err != nil || len(entries) == 0 {
+		return nil // nothing retained — either first run or retention not yet active
+	}
+
+	// If there are already pending ingest tasks (from a previous incomplete startup
+	// re-ingest or an in-progress upload), skip to avoid duplicating work.
+	if taskCount, err := connections.RDMS.CountAllIngestTasks(ctx); err == nil && taskCount > 0 {
+		return nil
+	}
+
+	// Check whether the graph already has nodes with node properties populated.
+	// After a clean in-session ingest, objectid is set. After a kglite save/load it is nil.
+	hasProps, err := graphHasNodeProperties(ctx, connections.Graph)
+	if err != nil {
+		slog.WarnContext(ctx, fmt.Sprintf("could not check graph properties, skipping rehydration: %v", err))
+		return nil
+	}
+	if hasProps {
+		return nil // graph properties are intact — no re-ingest needed
+	}
+
+	slog.InfoContext(ctx, "Graph properties missing after load — scheduling startup re-ingest from retained files",
+		slog.Int("file_count", len(entries)))
+
+	// Create a synthetic ingest job to hold the re-ingest tasks.
+	job, err := connections.RDMS.CreateIngestJob(ctx, model.IngestJob{
+		Status:     model.JobStatusIngesting,
+		StartTime:  time.Now().UTC(),
+		LastIngest: time.Now().UTC(),
+	})
+	if err != nil {
+		return fmt.Errorf("creating rehydration ingest job: %w", err)
+	}
+
+	// Create one task per retained file. Retained files are individual JSON files
+	// (ZIPs are extracted before retention, so all retained files are JSON).
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		filePath := filepath.Join(retainedDir, entry.Name())
+		if _, err := connections.RDMS.CreateIngestTask(ctx, model.IngestTask{
+			StoredFileName:   filePath,
+			OriginalFileName: entry.Name(),
+			FileType:         model.FileTypeJson,
+			JobId:            null.Int64From(job.ID),
+		}); err != nil {
+			slog.WarnContext(ctx, "Failed to create rehydration ingest task",
+				slog.String("file", filePath),
+				slog.String("error", err.Error()))
+		}
+	}
+
+	return nil
+}
+
+// graphHasNodeProperties returns true if the graph contains at least one node whose
+// objectid property is non-nil. After a kglite save/load cycle, node properties
+// (other than name) are nil, so this returns false until after a fresh ingest.
+func graphHasNodeProperties(ctx context.Context, graphDB graph.Database) (bool, error) {
+	var hasProps bool
+
+	err := graphDB.ReadTransaction(ctx, func(tx graph.Transaction) error {
+		result := tx.Raw("MATCH (n) WHERE n.objectid IS NOT NULL RETURN count(n) AS c LIMIT 1", nil)
+		defer result.Close()
+		if result.Error() != nil {
+			return result.Error()
+		}
+		if result.Next() {
+			if v, ok := result.Values()[0].(int64); ok && v > 0 {
+				hasProps = true
+			}
+		}
+		return result.Error()
+	})
+
+	return hasProps, err
 }

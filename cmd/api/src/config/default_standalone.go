@@ -60,7 +60,7 @@ func NewDefaultConfiguration() (Configuration, error) {
 			LogLevel:                        "INFO",
 			CollectorsBasePath:              filepath.Join(workDir, "collectors"),
 			CollectorsBucketURL:             serde.MustParseURL("https://bhe-hound-artifacts.s3.amazonaws.com/"),
-			DatapipeInterval:                60,
+			DatapipeInterval:                5,
 			EnableStartupWaitPeriod:         true,
 			EnableAPILogging:                true,
 			DisableAnalysis:                 false,

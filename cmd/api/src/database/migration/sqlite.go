@@ -18,6 +18,7 @@ package migration
 
 import (
 	"github.com/specterops/bloodhound/cmd/api/src/auth"
+	"github.com/specterops/bloodhound/cmd/api/src/database/types"
 	"github.com/specterops/bloodhound/cmd/api/src/model"
 	"github.com/specterops/bloodhound/cmd/api/src/model/appcfg"
 	"gorm.io/gorm"
@@ -282,7 +283,10 @@ CREATE TABLE IF NOT EXISTS completed_tasks (
 	if err := seedRolesAndPermissions(db); err != nil {
 		return err
 	}
-	return seedFeatureFlags(db)
+	if err := seedFeatureFlags(db); err != nil {
+		return err
+	}
+	return seedParameters(db)
 }
 
 // seedRolesAndPermissions populates the permissions, roles, and roles_permissions tables with
@@ -366,6 +370,31 @@ func seedFeatureFlags(db *gorm.DB) error {
 		if result := db.Where(appcfg.FeatureFlag{Key: flag.Key}).FirstOrCreate(&flag); result.Error != nil {
 			return result.Error
 		}
+	}
+
+	return nil
+}
+
+// seedParameters populates the parameters table with standalone-mode defaults.
+// It is idempotent — existing rows (including any user-modified values) are left untouched.
+func seedParameters(db *gorm.DB) error {
+	// Enable ingest file retention so uploaded JSON files are kept in the retained directory.
+	// On restart, the server detects missing graph properties and re-ingests from these files,
+	// restoring node properties that kglite does not persist across save/load cycles.
+	retainValue, err := types.NewJSONBObject(appcfg.RetainIngestedFilesParameter{Enabled: true})
+	if err != nil {
+		return err
+	}
+
+	retainParam := appcfg.Parameter{
+		Key:         appcfg.RetainIngestedFilesKey,
+		Name:        "Analysis Retain Ingest Files",
+		Description: "Retain ingest files so the graph can be rebuilt from them on server restart.",
+		Value:       retainValue,
+	}
+	if result := db.Where(appcfg.Parameter{Key: appcfg.RetainIngestedFilesKey}).
+		FirstOrCreate(&retainParam); result.Error != nil {
+		return result.Error
 	}
 
 	return nil
