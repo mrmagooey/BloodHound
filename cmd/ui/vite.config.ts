@@ -90,6 +90,14 @@ export default defineConfig(({ mode }) => {
             environment: 'jsdom',
             setupFiles: ['./src/setupTests.tsx'],
             testTimeout: 60000, // 1 minute,
+            exclude: [
+                'e2e/**',
+                'node_modules',
+                'dist',
+                '.idea',
+                '.git',
+                '.cache',
+            ],
             coverage: {
                 provider: 'v8',
                 reportsDirectory: './coverage',
