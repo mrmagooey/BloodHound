@@ -12,18 +12,24 @@ import (
 
 // Expected values captured from known-good run against kglite with sample data.
 // If sample data changes, re-run with -v and update these values.
+//
+// NOTE: Values updated to reflect fix for relationship endpoint node matching.
+// Previously, all relationship endpoints used sourceKind for MERGE identity matching,
+// which caused duplicate nodes when an endpoint type differed from sourceKind (e.g.,
+// Group targets of User relationships). Now endpoints use their actual kind (rel.Source.Kind,
+// rel.Target.Kind) for correct MERGE matching, fixing the 14 missing Groups issue.
 
 var adExpectedCounts = map[string]int64{
-	"Total nodes":                        1519,
+	"Total nodes":                        1537,
 	"Total relationships":                16654,
 	"Computers":                          34,
 	"Users":                              99,
 	"Groups":                             243,
 	"Kerberoastable users":               2,
 	"AS-REP roastable users":             1,
-	"AdminCount users":                   40,
+	"AdminCount users":                   39,
 	"AdminCount computers":               0,
-	"Enabled domain admin users":         16,
+	"Enabled domain admin users":         15,
 	"DCSync relationships":               8,
 	"HasSession relationships":           29,
 	"AdminTo relationships":              24,
@@ -48,16 +54,16 @@ var azureExpectedCounts = map[string]int64{
 
 var combinedExpectedCounts = map[string]int64{
 	// AD queries against combined graph
-	"Total nodes":                        15074,
-	"Total relationships":                826355,
+	"Total nodes":                        15179,
+	"Total relationships":                825962,
 	"Computers":                          34,
 	"Users":                              111,
 	"Groups":                             260,
 	"Kerberoastable users":               2,
 	"AS-REP roastable users":             1,
-	"AdminCount users":                   40,
+	"AdminCount users":                   39,
 	"AdminCount computers":               0,
-	"Enabled domain admin users":         16,
+	"Enabled domain admin users":         15,
 	"DCSync relationships":               8,
 	"HasSession relationships":           29,
 	"AdminTo relationships":              24,
@@ -74,7 +80,7 @@ var combinedExpectedCounts = map[string]int64{
 	"Azure apps":               6648,
 	"Azure VMs":                66,
 	"Azure groups":             58,
-	"AZGlobalAdmin relationships": 30,
+	"AZGlobalAdmin relationships": 27,
 	"AZOwns relationships":        2850,
 }
 

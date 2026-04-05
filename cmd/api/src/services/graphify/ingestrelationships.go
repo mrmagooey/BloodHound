@@ -213,12 +213,12 @@ func ingestibleRelationshipsToUpdates(batch *IngestContext, rels []ein.Ingestibl
 				common.LastSeen: batch.IngestTime,
 			}), startKinds...),
 			StartIdentityProperties: []string{common.ObjectID.String()},
-			StartIdentityKind:       sourceKind,
+			StartIdentityKind:       rel.Source.Kind,
 			End: graph.PrepareNode(graph.AsProperties(graph.PropertyMap{
 				common.ObjectID: endObjID,
 				common.LastSeen: batch.IngestTime,
 			}), endKinds...),
-			EndIdentityKind:       sourceKind,
+			EndIdentityKind:       rel.Target.Kind,
 			EndIdentityProperties: []string{common.ObjectID.String()},
 			Relationship:          graph.PrepareRelationship(graph.AsProperties(rel.RelProps), rel.RelType),
 		}
