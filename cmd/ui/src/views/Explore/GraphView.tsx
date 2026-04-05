@@ -14,6 +14,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
+import 'src/styles/graph.scss';
 import {
     BaseExploreLayoutOptions,
     ContextMenuPrivilegeZonesEnabled,

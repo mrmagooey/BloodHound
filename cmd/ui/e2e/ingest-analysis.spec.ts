@@ -182,22 +182,28 @@ test.describe('Ingest and Analysis workflow', () => {
         });
 
         await test.step('Wait for the ingest job to finish processing', async () => {
+            // Poll the job status directly rather than the datapipe status.
+            // The datapipe processes ingest on a short timer (1s in test config),
+            // but its non-idle state is so transient we might miss it.
             await pollUntil(
                 async () => {
-                    const statusResponse = await request.get('/api/v2/datapipe/status', {
+                    const jobsResponse = await request.get('/api/v2/file-upload', {
                         headers: authHeaders(),
                     });
-                    if (statusResponse.status() !== 200) return false;
-                    const body = await statusResponse.json();
-                    const status = body.data?.status;
-                    // After ingest completes the datapipe returns to idle
-                    return status === 'idle';
+                    if (jobsResponse.status() !== 200) return false;
+                    const jobsBody = await jobsResponse.json();
+                    const jobs = jobsBody.data;
+                    if (!Array.isArray(jobs)) return false;
+                    const ourJob = jobs.find((j: any) => j.id === jobId);
+                    if (!ourJob) return false;
+                    // Terminal states: 2 = complete, 5 = failed, 8 = partially_complete
+                    return [2, 5, 8].includes(ourJob.status);
                 },
-                { timeoutMs: 60_000, description: 'datapipe to return to idle after ingest' }
+                { timeoutMs: 60_000, intervalMs: 1000, description: 'ingest job to reach terminal state' }
             );
         });
 
-        await test.step('Verify ingest job reached a terminal state', async () => {
+        await test.step('Verify ingest job reached a successful terminal state', async () => {
             const jobsResponse = await request.get('/api/v2/file-upload', {
                 headers: authHeaders(),
             });
@@ -223,6 +229,8 @@ test.describe('Ingest and Analysis workflow', () => {
         });
 
         await test.step('Wait for analysis to complete', async () => {
+            // Poll for the last_complete_analysis_at timestamp to be set,
+            // indicating analysis has finished at least once.
             await pollUntil(
                 async () => {
                     const statusResponse = await request.get('/api/v2/datapipe/status', {
@@ -230,11 +238,10 @@ test.describe('Ingest and Analysis workflow', () => {
                     });
                     if (statusResponse.status() !== 200) return false;
                     const body = await statusResponse.json();
-                    const status = body.data?.status;
-                    // Analysis is done when datapipe goes back to idle
-                    return status === 'idle';
+                    const lastAnalysis = body.data?.last_complete_analysis_at;
+                    return lastAnalysis && lastAnalysis !== '0001-01-01T00:00:00Z';
                 },
-                { timeoutMs: 60_000, description: 'analysis to complete (datapipe idle)' }
+                { timeoutMs: 60_000, intervalMs: 1000, description: 'analysis to complete (last_complete_analysis_at set)' }
             );
         });
 
@@ -253,20 +260,27 @@ test.describe('Ingest and Analysis workflow', () => {
     });
 
     test('File Ingest page is accessible after login via UI', async ({ page, request }) => {
-        const token = await loginAndGetToken(request);
-
         await test.step('Navigate to file ingest administration page', async () => {
-            // Inject the session into the browser so the React app recognises us.
-            // We do this by logging in through the UI form which sets Redux state.
+            // Use the loginViaUI helper which handles both standalone and normal modes.
             await page.goto('/ui/login');
-            await page.waitForSelector('#username', { timeout: 15_000 });
 
-            await page.locator('#username').fill(E2E_ADMIN_USERNAME);
-            await page.locator('#password').fill(E2E_ADMIN_PASSWORD);
-            await page.getByRole('button', { name: 'LOGIN' }).click();
+            // Race: either the login form appears (normal mode) or the app
+            // auto-redirects away from /login (standalone mode).
+            const loginForm = page.locator('#username');
+            const redirected = page.waitForURL(/\/ui\/(?!login)/, { timeout: 15_000 });
+            const formAppeared = loginForm.waitFor({ state: 'visible', timeout: 15_000 }).then(() => 'form' as const);
 
-            // After successful login the app redirects away from /login
-            await page.waitForURL(/\/ui\/(?!login)/, { timeout: 15_000 });
+            const result = await Promise.race([
+                redirected.then(() => 'redirected' as const),
+                formAppeared,
+            ]);
+
+            if (result === 'form') {
+                await loginForm.fill(E2E_ADMIN_USERNAME);
+                await page.locator('#password').fill(E2E_ADMIN_PASSWORD);
+                await page.getByRole('button', { name: 'LOGIN' }).click();
+                await page.waitForURL(/\/ui\/(?!login)/, { timeout: 15_000 });
+            }
         });
 
         await test.step('Navigate to Administration > File Ingest', async () => {

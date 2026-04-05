@@ -30,9 +30,26 @@ export default function globalSetup() {
     rmSync(dataDir, { recursive: true, force: true });
     mkdirSync(dataDir, { recursive: true });
 
+    // Pre-create the data directories the server expects. When a server from a
+    // previous run is reused (reuseExistingServer), the rmSync above removes its
+    // working directories. Creating them here prevents "no such file or directory"
+    // errors from the running server.
+    const dataSubDir = `${dataDir}/data`;
+    for (const sub of ['tmp', 'retained', 'client_logs', 'collectors']) {
+        mkdirSync(`${dataSubDir}/${sub}`, { recursive: true });
+    }
+
     // Write a config file so the standalone binary creates an admin user with
     // a deterministic password that tests can use to authenticate.
     const config = {
+        work_dir: `${dataDir}/data`,
+        sqlite_path: `${dataDir}/data/bloodhound.db`,
+        graph_path: `${dataDir}/data/graph.db`,
+        collectors_base_path: `${dataDir}/data/collectors`,
+        // Use a short datapipe interval so ingest jobs are picked up quickly.
+        // The default (60s) is too slow for E2E tests that upload data and then
+        // poll for completion.
+        datapipe_interval: 1,
         default_admin: {
             principal_name: E2E_ADMIN_USERNAME,
             password: E2E_ADMIN_PASSWORD,

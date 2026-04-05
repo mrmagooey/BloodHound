@@ -212,6 +212,54 @@ func TestRewriteInParam(t *testing.T) {
 	}
 }
 
+func TestRewriteEmptyWhere(t *testing.T) {
+	tests := []struct {
+		name   string
+		input  string
+		expect string
+	}{
+		{
+			name:   "empty WHERE before RETURN",
+			input:  "match (n) where  return n",
+			expect: "match (n) return n",
+		},
+		{
+			name:   "empty WHERE before RETURN uppercase",
+			input:  "MATCH (n) WHERE  RETURN n",
+			expect: "MATCH (n) RETURN n",
+		},
+		{
+			name:   "empty WHERE before ORDER",
+			input:  "MATCH (n) WHERE ORDER BY n.name RETURN n",
+			expect: "MATCH (n) ORDER BY n.name RETURN n",
+		},
+		{
+			name:   "empty WHERE before LIMIT",
+			input:  "MATCH (n) WHERE LIMIT 10",
+			expect: "MATCH (n) LIMIT 10",
+		},
+		{
+			name:   "non-empty WHERE unchanged",
+			input:  "MATCH (n) WHERE n.name = 'test' RETURN n",
+			expect: "MATCH (n) WHERE n.name = 'test' RETURN n",
+		},
+		{
+			name:   "no WHERE unchanged",
+			input:  "MATCH (n) RETURN n",
+			expect: "MATCH (n) RETURN n",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := rewriteEmptyWhere(tt.input)
+			if got != tt.expect {
+				t.Errorf("rewriteEmptyWhere(%q)\n  got:    %q\n  expect: %q", tt.input, got, tt.expect)
+			}
+		})
+	}
+}
+
 func TestRewriteForKglite(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -230,6 +278,12 @@ func TestRewriteForKglite(t *testing.T) {
 			input:  "MATCH (n) WHERE n.name = 'test' RETURN n",
 			params: map[string]any{},
 			expect: "MATCH (n) WHERE n.name = 'test' RETURN n",
+		},
+		{
+			name:   "empty WHERE removed",
+			input:  "match (n) where  return n",
+			params: map[string]any{},
+			expect: "match (n) return n",
 		},
 	}
 

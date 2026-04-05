@@ -23,10 +23,13 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"time"
 
 	"github.com/specterops/bloodhound/cmd/api/src/bootstrap"
 	"github.com/specterops/bloodhound/cmd/api/src/config"
 	"github.com/specterops/bloodhound/cmd/api/src/database"
+	"github.com/specterops/bloodhound/cmd/api/src/model"
+	"github.com/specterops/bloodhound/cmd/api/src/model/appcfg"
 	"github.com/specterops/bloodhound/cmd/api/src/services"
 	"github.com/specterops/bloodhound/cmd/api/src/version"
 	"github.com/specterops/bloodhound/packages/go/bhlog"
@@ -40,13 +43,73 @@ func printVersion() {
 	os.Exit(0)
 }
 
+// resetPassword opens the SQLite database, looks up the admin user, generates a new
+// random password, hashes it with Argon2, stores it, then prints the new password.
+func resetPassword(cfg config.Configuration) {
+	ctx := context.Background()
+
+	principalName := cfg.DefaultAdmin.PrincipalName
+	if principalName == "" {
+		principalName = "admin"
+	}
+
+	db, err := services.ConnectPostgres(cfg)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: failed to open database: %v\n", err)
+		os.Exit(1)
+	}
+	defer db.Close(ctx)
+
+	user, err := db.LookupUser(ctx, principalName)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: failed to look up user %q: %v\n", principalName, err)
+		os.Exit(1)
+	}
+
+	newPassword, err := config.GenerateSecureRandomString(32)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: failed to generate password: %v\n", err)
+		os.Exit(1)
+	}
+
+	secretDigester := cfg.Crypto.Argon2.NewDigester()
+	secretDigest, err := secretDigester.Digest(newPassword)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: failed to hash password: %v\n", err)
+		os.Exit(1)
+	}
+
+	if user.AuthSecret == nil {
+		// No existing secret — create one
+		newSecret := model.AuthSecret{
+			UserID:       user.ID,
+			Digest:       secretDigest.String(),
+			DigestMethod: secretDigester.Method(),
+			ExpiresAt:    time.Now().Add(appcfg.GetPasswordExpiration(ctx, db)),
+		}
+		if _, err := db.CreateAuthSecret(ctx, newSecret); err != nil {
+			fmt.Fprintf(os.Stderr, "error: failed to create auth secret: %v\n", err)
+			os.Exit(1)
+		}
+	} else {
+		user.AuthSecret.Digest = secretDigest.String()
+		user.AuthSecret.DigestMethod = secretDigester.Method()
+		user.AuthSecret.ExpiresAt = time.Now().Add(appcfg.GetPasswordExpiration(ctx, db))
+		if err := db.UpdateAuthSecret(ctx, *user.AuthSecret); err != nil {
+			fmt.Fprintf(os.Stderr, "error: failed to update auth secret: %v\n", err)
+			os.Exit(1)
+		}
+	}
+
+	fmt.Printf("Password reset for user %q\nNew password: %s\n", principalName, newPassword)
+}
+
 func main() {
 	var (
-		configFilePath  string
-		versionFlag     bool
-		standaloneUser  string
-		standalonePass  string
-		sqlitePath      string
+		configFilePath string
+		versionFlag    bool
+		resetpwFlag    bool
+		sqlitePath     string
 	)
 
 	// Eagerly set logging format if valid environment variable is set
@@ -61,10 +124,9 @@ func main() {
 	}
 
 	flag.BoolVar(&versionFlag, "version", false, "Get binary version.")
+	flag.BoolVar(&resetpwFlag, "resetpw", false, "Reset the admin user password, print the new password to stdout, then exit.")
 	flag.StringVar(&configFilePath, "configfile", bootstrap.DefaultConfigFilePath(), "Configuration file to load.")
 	flag.StringVar(&sqlitePath, "sqlite-path", "", "Path to SQLite database file. Enables standalone mode (overrides config file).")
-	flag.StringVar(&standaloneUser, "auth-user", "", "Username for standalone mode HTTP Basic Auth (overrides BLOODHOUND_USERNAME env var).")
-	flag.StringVar(&standalonePass, "auth-pass", "", "Password for standalone mode HTTP Basic Auth (overrides BLOODHOUND_PASSWORD env var).")
 	flag.Parse()
 
 	if versionFlag {
@@ -77,19 +139,15 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Apply standalone credential overrides: CLI flags take priority, then env vars, then config file.
+	// Override SQLite path if provided via CLI flag.
 	if sqlitePath != "" {
 		cfg.SQLitePath = sqlitePath
 	}
-	if standaloneUser != "" {
-		cfg.StandaloneUsername = standaloneUser
-	} else if envUser := os.Getenv("BLOODHOUND_USERNAME"); envUser != "" && cfg.StandaloneUsername == "" {
-		cfg.StandaloneUsername = envUser
-	}
-	if standalonePass != "" {
-		cfg.StandalonePassword = standalonePass
-	} else if envPass := os.Getenv("BLOODHOUND_PASSWORD"); envPass != "" && cfg.StandalonePassword == "" {
-		cfg.StandalonePassword = envPass
+
+	// Handle --resetpw: reset the admin password and exit without starting the server.
+	if resetpwFlag {
+		resetPassword(cfg)
+		os.Exit(0)
 	}
 
 	// Initialize logging

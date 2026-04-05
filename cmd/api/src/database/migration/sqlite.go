@@ -36,6 +36,7 @@ func MigrateSQLite(db *gorm.DB) error {
 		&model.AuthSecret{},
 		&model.AuthToken{},
 		&model.UserSession{},
+		&model.AuditLog{},
 		&model.EnvironmentTargetedAccessControl{},
 		// Ingest / asset group tables
 		&model.Migration{},
@@ -54,6 +55,14 @@ func MigrateSQLite(db *gorm.DB) error {
 		&model.SavedQueriesPermissions{},
 		&appcfg.Parameter{},
 		&appcfg.FeatureFlag{},
+		// Graph schema tables: Kind table only (others created via raw SQL below
+		// because their struct fields don't match the actual DB column names)
+		&model.Kind{},
+		&model.GraphSchemaExtension{},
+		&model.GraphSchemaProperty{},
+		&model.SchemaFinding{},
+		&model.SchemaFindingsSubtype{},
+		&model.SchemaEnvironmentPrincipalKind{},
 	); err != nil {
 		return err
 	}
@@ -84,7 +93,187 @@ CREATE TABLE IF NOT EXISTS analysis_request_switch (
     delete_source_kinds   text NOT NULL DEFAULT '[]'
 );`
 
-	for _, stmt := range []string{createDatapipeStatus, seedDatapipeStatus, createAnalysisRequestSwitch} {
+	const createCustomNodeKinds = `
+CREATE TABLE IF NOT EXISTS custom_node_kinds (
+    id                  integer PRIMARY KEY AUTOINCREMENT,
+    kind_name           text NOT NULL UNIQUE,
+    schema_node_kind_id integer,
+    config              text NOT NULL DEFAULT '{}',
+    created_at          datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at          datetime NOT NULL DEFAULT CURRENT_TIMESTAMP
+);`
+
+	// schema_node_kinds: the struct's Name field is populated by a JOIN on the kind
+	// table, but the actual column is kind_id. Must be created with raw SQL.
+	const createSchemaNodeKinds = `
+CREATE TABLE IF NOT EXISTS schema_node_kinds (
+    id                  integer PRIMARY KEY AUTOINCREMENT,
+    kind_id             integer,
+    schema_extension_id integer,
+    display_name        text NOT NULL DEFAULT '',
+    description         text NOT NULL DEFAULT '',
+    is_display_kind     integer NOT NULL DEFAULT 0,
+    icon                text NOT NULL DEFAULT '',
+    icon_color          text NOT NULL DEFAULT '',
+    created_at          datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at          datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    deleted_at          datetime
+);`
+
+	const createSchemaRelationshipKinds = `
+CREATE TABLE IF NOT EXISTS schema_relationship_kinds (
+    id                  integer PRIMARY KEY AUTOINCREMENT,
+    kind_id             integer,
+    schema_extension_id integer,
+    name                text NOT NULL DEFAULT '',
+    description         text NOT NULL DEFAULT '',
+    is_traversable      integer NOT NULL DEFAULT 0,
+    created_at          datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at          datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    deleted_at          datetime
+);`
+
+	const createSchemaEnvironments = `
+CREATE TABLE IF NOT EXISTS schema_environments (
+    id                             integer PRIMARY KEY AUTOINCREMENT,
+    schema_extension_id            integer,
+    schema_extension_display_name  text NOT NULL DEFAULT '',
+    environment_kind_id            integer,
+    environment_kind_name          text NOT NULL DEFAULT '',
+    source_kind_id                 integer,
+    created_at                     datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at                     datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    deleted_at                     datetime
+);`
+
+	const createSourceKinds = `
+CREATE TABLE IF NOT EXISTS source_kinds (
+    id      integer PRIMARY KEY AUTOINCREMENT,
+    kind_id integer NOT NULL,
+    active  integer NOT NULL DEFAULT 1
+);`
+
+	const createADDataQualityStats = `
+CREATE TABLE IF NOT EXISTS ad_data_quality_stats (
+    id                       integer PRIMARY KEY AUTOINCREMENT,
+    domain_sid               text NOT NULL DEFAULT '',
+    users                    integer NOT NULL DEFAULT 0,
+    groups                   integer NOT NULL DEFAULT 0,
+    computers                integer NOT NULL DEFAULT 0,
+    ous                      integer NOT NULL DEFAULT 0,
+    containers               integer NOT NULL DEFAULT 0,
+    gpos                     integer NOT NULL DEFAULT 0,
+    aiacas                   integer NOT NULL DEFAULT 0,
+    rootcas                  integer NOT NULL DEFAULT 0,
+    enterprisecas            integer NOT NULL DEFAULT 0,
+    ntauthstores             integer NOT NULL DEFAULT 0,
+    certtemplates            integer NOT NULL DEFAULT 0,
+    issuancepolicies         integer NOT NULL DEFAULT 0,
+    acls                     integer NOT NULL DEFAULT 0,
+    sessions                 integer NOT NULL DEFAULT 0,
+    relationships            integer NOT NULL DEFAULT 0,
+    session_completeness     real    NOT NULL DEFAULT 0,
+    local_group_completeness real    NOT NULL DEFAULT 0,
+    run_id                   text    NOT NULL DEFAULT '',
+    created_at               datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at               datetime NOT NULL DEFAULT CURRENT_TIMESTAMP
+);`
+
+	const createADDataQualityAggregations = `
+CREATE TABLE IF NOT EXISTS ad_data_quality_aggregations (
+    id                       integer PRIMARY KEY AUTOINCREMENT,
+    domains                  integer NOT NULL DEFAULT 0,
+    users                    integer NOT NULL DEFAULT 0,
+    groups                   integer NOT NULL DEFAULT 0,
+    computers                integer NOT NULL DEFAULT 0,
+    ous                      integer NOT NULL DEFAULT 0,
+    containers               integer NOT NULL DEFAULT 0,
+    gpos                     integer NOT NULL DEFAULT 0,
+    aiacas                   integer NOT NULL DEFAULT 0,
+    rootcas                  integer NOT NULL DEFAULT 0,
+    enterprisecas            integer NOT NULL DEFAULT 0,
+    ntauthstores             integer NOT NULL DEFAULT 0,
+    certtemplates            integer NOT NULL DEFAULT 0,
+    issuancepolicies         integer NOT NULL DEFAULT 0,
+    acls                     integer NOT NULL DEFAULT 0,
+    sessions                 integer NOT NULL DEFAULT 0,
+    relationships            integer NOT NULL DEFAULT 0,
+    session_completeness     real    NOT NULL DEFAULT 0,
+    local_group_completeness real    NOT NULL DEFAULT 0,
+    run_id                   text    NOT NULL DEFAULT '',
+    created_at               datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at               datetime NOT NULL DEFAULT CURRENT_TIMESTAMP
+);`
+
+	const createAzureDataQualityStats = `
+CREATE TABLE IF NOT EXISTS azure_data_quality_stats (
+    id                  integer PRIMARY KEY AUTOINCREMENT,
+    tenant_id           text    NOT NULL DEFAULT '',
+    relationships       integer NOT NULL DEFAULT 0,
+    users               integer NOT NULL DEFAULT 0,
+    groups              integer NOT NULL DEFAULT 0,
+    apps                integer NOT NULL DEFAULT 0,
+    service_principals  integer NOT NULL DEFAULT 0,
+    devices             integer NOT NULL DEFAULT 0,
+    management_groups   integer NOT NULL DEFAULT 0,
+    subscriptions       integer NOT NULL DEFAULT 0,
+    resource_groups     integer NOT NULL DEFAULT 0,
+    vms                 integer NOT NULL DEFAULT 0,
+    key_vaults          integer NOT NULL DEFAULT 0,
+    automation_accounts integer NOT NULL DEFAULT 0,
+    container_registries integer NOT NULL DEFAULT 0,
+    function_apps       integer NOT NULL DEFAULT 0,
+    logic_apps          integer NOT NULL DEFAULT 0,
+    managed_clusters    integer NOT NULL DEFAULT 0,
+    vm_scale_sets       integer NOT NULL DEFAULT 0,
+    web_apps            integer NOT NULL DEFAULT 0,
+    run_id              text    NOT NULL DEFAULT '',
+    created_at          datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at          datetime NOT NULL DEFAULT CURRENT_TIMESTAMP
+);`
+
+	const createAzureDataQualityAggregations = `
+CREATE TABLE IF NOT EXISTS azure_data_quality_aggregations (
+    id                  integer PRIMARY KEY AUTOINCREMENT,
+    tenants             integer NOT NULL DEFAULT 0,
+    relationships       integer NOT NULL DEFAULT 0,
+    users               integer NOT NULL DEFAULT 0,
+    groups              integer NOT NULL DEFAULT 0,
+    apps                integer NOT NULL DEFAULT 0,
+    service_principals  integer NOT NULL DEFAULT 0,
+    devices             integer NOT NULL DEFAULT 0,
+    management_groups   integer NOT NULL DEFAULT 0,
+    subscriptions       integer NOT NULL DEFAULT 0,
+    resource_groups     integer NOT NULL DEFAULT 0,
+    vms                 integer NOT NULL DEFAULT 0,
+    key_vaults          integer NOT NULL DEFAULT 0,
+    automation_accounts integer NOT NULL DEFAULT 0,
+    container_registries integer NOT NULL DEFAULT 0,
+    function_apps       integer NOT NULL DEFAULT 0,
+    logic_apps          integer NOT NULL DEFAULT 0,
+    managed_clusters    integer NOT NULL DEFAULT 0,
+    vm_scale_sets       integer NOT NULL DEFAULT 0,
+    web_apps            integer NOT NULL DEFAULT 0,
+    run_id              text    NOT NULL DEFAULT '',
+    created_at          datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at          datetime NOT NULL DEFAULT CURRENT_TIMESTAMP
+);`
+
+	// completed_tasks: the Errors and Warnings fields use pq.StringArray (PostgreSQL text[])
+	// which doesn't work with SQLite, so we store them as JSON text.
+	const createCompletedTasks = `
+CREATE TABLE IF NOT EXISTS completed_tasks (
+    id               integer PRIMARY KEY AUTOINCREMENT,
+    ingest_job_id    integer NOT NULL DEFAULT 0,
+    file_name        text    NOT NULL DEFAULT '',
+    parent_file_name text    NOT NULL DEFAULT '',
+    errors           text    NOT NULL DEFAULT '[]',
+    warnings         text    NOT NULL DEFAULT '[]',
+    created_at       datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at       datetime NOT NULL DEFAULT CURRENT_TIMESTAMP
+);`
+
+	for _, stmt := range []string{createDatapipeStatus, seedDatapipeStatus, createAnalysisRequestSwitch, createCustomNodeKinds, createSchemaNodeKinds, createSchemaRelationshipKinds, createSchemaEnvironments, createSourceKinds, createADDataQualityStats, createADDataQualityAggregations, createAzureDataQualityStats, createAzureDataQualityAggregations, createCompletedTasks} {
 		if err := db.Exec(stmt).Error; err != nil {
 			return err
 		}
@@ -169,6 +358,7 @@ func seedFeatureFlags(db *gorm.DB) error {
 		{Key: appcfg.FeatureClientBearerAuth, Name: "Client Bearer Auth", Description: "Enables client bearer auth.", Enabled: false, UserUpdatable: false},
 		{Key: appcfg.FeatureOpenGraphExtensionManagement, Name: "Open Graph Extension Management", Description: "Enables open graph extension management.", Enabled: false, UserUpdatable: false},
 		{Key: appcfg.FeatureOGCollectorPlatformSupport, Name: "Open Graph Collector Platform Support", Description: "Enables open graph collector platform support.", Enabled: false, UserUpdatable: false},
+		{Key: appcfg.FeatureOpenGraphPhase2, Name: "Open Graph Phase 2", Description: "Open Graph Phase 2 features", Enabled: true, UserUpdatable: false},
 	}
 
 	for _, f := range flags {

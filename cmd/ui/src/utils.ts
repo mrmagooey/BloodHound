@@ -24,7 +24,7 @@ import { addSnackbar } from 'src/ducks/global/actions';
 import { Glyph } from 'src/rendering/programs/node.glyphs';
 import { store } from 'src/store';
 
-const IGNORE_401_LOGOUT = ['/api/v2/login', '/api/v2/logout', '/api/v2/features'];
+const IGNORE_401_LOGOUT = ['/api/v2/login', '/api/v2/logout', '/api/v2/features', '/api/v2/file-upload/accepted-types'];
 
 export const getDatesInRange = (startDate: Date, endDate: Date) => {
     const date = new Date(startDate.getTime());

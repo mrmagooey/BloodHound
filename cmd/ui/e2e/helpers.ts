@@ -39,12 +39,35 @@ export async function loginViaAPI(request: APIRequestContext): Promise<string> {
 /**
  * Log in via the UI login form. After this function returns the browser
  * session is authenticated and the page has navigated away from /login.
+ *
+ * In standalone mode, the server's StandaloneAuthMiddleware authenticates
+ * every request automatically. When the app checks /api/v2/self and gets
+ * a valid user, it immediately redirects away from /login without showing
+ * the login form. This helper handles both scenarios:
+ *   1. Normal mode: fills in the form and submits it.
+ *   2. Standalone mode: detects the automatic redirect and returns.
  */
 export async function loginViaUI(page: Page): Promise<void> {
     await page.goto('/ui/login');
-    await page.waitForSelector('#username', { timeout: 15_000 });
 
-    await page.locator('#username').fill(E2E_ADMIN_USERNAME);
+    // Race: either the login form appears (normal mode) or the app
+    // auto-redirects away from /login (standalone mode).
+    const loginForm = page.locator('#username');
+    const redirected = page.waitForURL(/\/ui\/(?!login)/, { timeout: 15_000 });
+    const formAppeared = loginForm.waitFor({ state: 'visible', timeout: 15_000 }).then(() => 'form' as const);
+
+    const result = await Promise.race([
+        redirected.then(() => 'redirected' as const),
+        formAppeared,
+    ]);
+
+    if (result === 'redirected') {
+        // Standalone mode: already authenticated, nothing to do.
+        return;
+    }
+
+    // Normal mode: fill in the form.
+    await loginForm.fill(E2E_ADMIN_USERNAME);
     await page.locator('#password').fill(E2E_ADMIN_PASSWORD);
     await page.getByRole('button', { name: 'LOGIN' }).click();
 

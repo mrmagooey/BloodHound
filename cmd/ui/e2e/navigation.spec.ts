@@ -23,9 +23,11 @@ test.describe('Navigation', () => {
         const body = await response.json();
         expect(body.data).not.toBeNull();
 
-        await page.goto('/ui/explore');
-        // Wait for the app to render with nav bar
-        await page.waitForSelector('#app-root', { timeout: 15_000 });
+        // Use an admin page instead of /ui/explore to avoid the NoDataFileUpload
+        // dialog that covers the explore page and intercepts pointer events when
+        // the graph is empty.
+        await page.goto('/ui/administration/file-ingest');
+        await page.waitForSelector('main', { timeout: 15_000 });
     });
 
     test('nav bar is visible on authenticated pages', async ({ page }) => {

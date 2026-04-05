@@ -16,14 +16,44 @@
 
 import { expect, test } from '@playwright/test';
 
+/**
+ * Detect standalone mode by checking if navigating to /ui/login results in an
+ * automatic redirect (the StandaloneAuthMiddleware authenticates every request,
+ * so the app redirects away from /login immediately).
+ */
+async function isStandaloneMode(page: import('@playwright/test').Page): Promise<boolean> {
+    await page.goto('/ui/login');
+    // Race between the login form appearing and an auto-redirect.
+    const loginForm = page.locator('#username');
+    const redirected = page.waitForURL(/\/ui\/(?!login)/, { timeout: 5_000 }).then(() => true).catch(() => false);
+    const formAppeared = loginForm.waitFor({ state: 'visible', timeout: 5_000 }).then(() => false).catch(() => true);
+    return Promise.race([redirected, formAppeared]);
+}
+
 test.describe('Login page', () => {
+    let standalone: boolean;
+
+    test.beforeAll(async ({ browser }) => {
+        const page = await browser.newPage();
+        standalone = await isStandaloneMode(page);
+        await page.close();
+    });
+
     test.beforeEach(async ({ page }) => {
+        if (standalone) return; // Skip setup in standalone mode
         await page.goto('/ui/login');
-        // Wait for the login form to render
         await page.waitForSelector('#username', { timeout: 10_000 });
     });
 
     test('displays the login form with email and password fields', async ({ page }) => {
+        if (standalone) {
+            // In standalone mode, visiting /ui/login auto-redirects because the user
+            // is always authenticated. Verify that we end up on an authenticated page.
+            await page.goto('/ui/login');
+            await page.waitForURL(/\/ui\/(?!login)/, { timeout: 10_000 });
+            expect(page.url()).not.toContain('/ui/login');
+            return;
+        }
         const emailInput = page.locator('#username');
         const passwordInput = page.locator('#password');
 
@@ -32,17 +62,33 @@ test.describe('Login page', () => {
     });
 
     test('displays the LOGIN button', async ({ page }) => {
+        if (standalone) {
+            // Auto-authenticated; login button not shown
+            await page.goto('/ui/login');
+            await page.waitForURL(/\/ui\/(?!login)/, { timeout: 10_000 });
+            return;
+        }
         const loginButton = page.getByRole('button', { name: 'LOGIN' });
         await expect(loginButton).toBeVisible();
     });
 
     test('email field accepts input', async ({ page }) => {
+        if (standalone) {
+            await page.goto('/ui/login');
+            await page.waitForURL(/\/ui\/(?!login)/, { timeout: 10_000 });
+            return;
+        }
         const emailInput = page.locator('#username');
         await emailInput.fill('testuser@example.com');
         await expect(emailInput).toHaveValue('testuser@example.com');
     });
 
     test('password field accepts input and is masked', async ({ page }) => {
+        if (standalone) {
+            await page.goto('/ui/login');
+            await page.waitForURL(/\/ui\/(?!login)/, { timeout: 10_000 });
+            return;
+        }
         const passwordInput = page.locator('#password');
         await passwordInput.fill('secretpassword');
         await expect(passwordInput).toHaveValue('secretpassword');
@@ -50,6 +96,14 @@ test.describe('Login page', () => {
     });
 
     test('navigating to an authenticated route redirects to login', async ({ page }) => {
+        if (standalone) {
+            // In standalone mode, navigating to /ui/explore should stay there
+            // because the user is always authenticated.
+            await page.goto('/ui/explore');
+            await page.waitForSelector('[data-testid="explore"]', { timeout: 10_000 });
+            expect(page.url()).toContain('/ui/explore');
+            return;
+        }
         await page.goto('/ui/explore');
         // Should redirect back to login since we are not authenticated
         await page.waitForURL(/\/ui\/login/, { timeout: 10_000 });

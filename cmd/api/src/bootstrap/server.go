@@ -66,6 +66,15 @@ func MigrateDB(ctx context.Context, cfg config.Configuration, db database.Databa
 	if hasInstallation, err := db.HasInstallation(ctx); err != nil {
 		return err
 	} else if hasInstallation {
+		// On subsequent startups log admin credentials so the operator always knows how to log in.
+		// The password is only available here when it was set explicitly in the config file;
+		// if it was randomly generated on first run it will be empty and we skip the log.
+		if cfg.DefaultAdmin.Password != "" {
+			slog.InfoContext(ctx, "Admin credentials",
+				slog.String("username", cfg.DefaultAdmin.PrincipalName),
+				slog.String("password", cfg.DefaultAdmin.Password),
+			)
+		}
 		return nil
 	}
 

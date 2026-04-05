@@ -233,7 +233,10 @@ func OpenDatabase(connection string) (*gorm.DB, error) {
 }
 
 func OpenSQLiteDatabase(path string) (*gorm.DB, error) {
-	return OpenDatabaseDialect(path, true)
+	// Enable WAL mode and set a busy timeout so concurrent writers don't
+	// immediately get "database is locked" / "readonly database" errors.
+	dsn := path + "?_journal_mode=WAL&_busy_timeout=5000&_synchronous=NORMAL"
+	return OpenDatabaseDialect(dsn, true)
 }
 
 func OpenDatabaseDialect(connection string, useSQLite bool) (*gorm.DB, error) {
@@ -254,6 +257,19 @@ func OpenDatabaseDialect(connection string, useSQLite bool) (*gorm.DB, error) {
 	if db, err := gorm.Open(dialector, gormConfig); err != nil {
 		return nil, err
 	} else {
+		// For SQLite, restrict the connection pool to a single connection.
+		// The go-sqlite3 driver can fail with "unable to open database file"
+		// when the pool opens new connections concurrently. A single
+		// connection avoids this. Combined with the cached admin user in
+		// StandaloneAuthMiddleware, this eliminates per-request DB contention
+		// for authentication.
+		if useSQLite {
+			if sqlDB, err := db.DB(); err == nil {
+				sqlDB.SetMaxOpenConns(1)
+				sqlDB.SetMaxIdleConns(1)
+				sqlDB.SetConnMaxLifetime(0)
+			}
+		}
 		return db, nil
 	}
 }

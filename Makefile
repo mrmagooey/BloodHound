@@ -12,7 +12,7 @@ kglite-ffi/target/release/libkglite.a: kglite-ffi/src/**/*.rs kglite-ffi/Cargo.t
 
 ## Build the UI and copy assets to the embed directory
 ui:
-	cd cmd/ui && yarn install && yarn build
+	yarn install && yarn workspace bloodhound-ui build
 	cp -r cmd/ui/dist/. cmd/api/src/api/static/assets/
 
 ## Build the standalone binary (includes UI)

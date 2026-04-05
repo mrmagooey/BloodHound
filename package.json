@@ -23,6 +23,7 @@
   "devDependencies": {
     "all-contributors-cli": "^6.26.1",
     "prettier": "^3.2.5",
+    "turbo": "^2.9.3",
     "typescript": "^5.9.3"
   },
   "resolutions": {

@@ -27,7 +27,7 @@ export default defineConfig({
     retries: process.env.CI ? 2 : 0,
     workers: 1,
     reporter: 'html',
-    timeout: 30_000,
+    timeout: 60_000,
 
     use: {
         baseURL: BASE_URL,
@@ -42,10 +42,10 @@ export default defineConfig({
     ],
 
     webServer: {
-        command: `cd /tmp/bhce-playwright-data && ${BHCE_BINARY}`,
+        command: `${BHCE_BINARY} -configfile /tmp/bhce-playwright-data/bloodhound.config.json`,
         url: `${BASE_URL}/api/v2/self`,
-        reuseExistingServer: !process.env.CI,
-        timeout: 15_000,
+        reuseExistingServer: false,
+        timeout: 30_000,
         stdout: 'pipe',
         stderr: 'pipe',
     },

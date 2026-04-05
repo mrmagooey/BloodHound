@@ -49,9 +49,24 @@ func RegisterFossGlobalMiddleware(routerInst *router.Router, cfg config.Configur
 		routerInst.UsePrerouting(middleware.LoggingMiddleware(identityResolver, bypassLimitsParam))
 	}
 
+	// In standalone (SQLite) mode, replace the normal AuthMiddleware with
+	// StandaloneAuthMiddleware which unconditionally authenticates every request
+	// as the default admin user. This avoids 401 errors from invalid/stale
+	// bearer tokens and removes the need for login in the single-user mode.
+	var authMW mux.MiddlewareFunc
+	if cfg.SQLitePath != "" {
+		principalName := cfg.DefaultAdmin.PrincipalName
+		if principalName == "" {
+			principalName = "admin"
+		}
+		authMW = middleware.StandaloneAuthMiddleware(db, principalName)
+	} else {
+		authMW = middleware.AuthMiddleware(authenticator)
+	}
+
 	routerInst.UsePostrouting(
 		middleware.PanicHandler,
-		middleware.AuthMiddleware(authenticator),
+		authMW,
 		middleware.CompressionMiddleware,
 	)
 }

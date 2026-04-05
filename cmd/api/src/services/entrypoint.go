@@ -24,7 +24,6 @@ import (
 
 	"github.com/specterops/bloodhound/cmd/api/src/api"
 	"github.com/specterops/bloodhound/cmd/api/src/api/bolt"
-	"github.com/specterops/bloodhound/cmd/api/src/api/middleware"
 	"github.com/specterops/bloodhound/cmd/api/src/api/registration"
 	"github.com/specterops/bloodhound/cmd/api/src/api/router"
 	"github.com/specterops/bloodhound/cmd/api/src/auth"
@@ -46,7 +45,6 @@ import (
 	"github.com/specterops/bloodhound/packages/go/cache"
 	schema "github.com/specterops/bloodhound/packages/go/graphschema"
 	"github.com/specterops/dawgs/graph"
-	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 )
 
@@ -169,20 +167,6 @@ func Entrypoint(ctx context.Context, cfg config.Configuration, connections boots
 
 		registration.RegisterFossGlobalMiddleware(&routerInst, cfg, auth.NewIdentityResolver(), authenticator, connections.RDMS)
 		registration.RegisterFossRoutes(&routerInst, cfg, connections.RDMS, connections.Graph, graphQuery, apiCache, collectorManifests, authenticator, authorizer, ingestSchema, dogtagsService, openGraphSchemaService)
-
-		// In standalone mode, optionally enforce HTTP Basic Auth.
-		if standaloneMode {
-			if cfg.StandaloneUsername != "" && cfg.StandalonePassword != "" {
-				if hashedPassword, err := bcrypt.GenerateFromPassword([]byte(cfg.StandalonePassword), bcrypt.DefaultCost); err != nil {
-					return nil, fmt.Errorf("failed to hash standalone password: %w", err)
-				} else {
-					slog.InfoContext(ctx, "Standalone mode: HTTP Basic Auth enabled", slog.String("username", cfg.StandaloneUsername))
-					routerInst.UsePrerouting(middleware.BasicAuthMiddleware(cfg.StandaloneUsername, hashedPassword))
-				}
-			} else {
-				slog.WarnContext(ctx, "Standalone mode: no credentials configured, authentication is DISABLED")
-			}
-		}
 
 		if !standaloneMode {
 			// Set neo4j batch and flush sizes from database parameters

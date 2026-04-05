@@ -15,7 +15,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { expect, test } from '@playwright/test';
-import { loginViaUI } from './helpers';
+import { loginViaAPI, loginViaUI } from './helpers';
 
 test.describe('Administration pages', () => {
     test.setTimeout(60_000);
@@ -86,5 +86,176 @@ test.describe('Administration pages', () => {
         expect(pageText).toContain('File Ingest');
         expect(pageText).toContain('Data Quality');
         expect(pageText).toContain('Manage Users');
+    });
+});
+
+test.describe('Administration pages - deeper coverage', () => {
+    test.setTimeout(60_000);
+
+    test.beforeEach(async ({ page }) => {
+        await loginViaUI(page);
+    });
+
+    // --- File Ingest deeper tests ---
+
+    test('File Ingest page shows title and documentation link', async ({ page }) => {
+        await page.goto('/ui/administration/file-ingest');
+        const fileIngest = page.getByTestId('manual-file-ingest');
+        await expect(fileIngest).toBeVisible({ timeout: 15_000 });
+
+        const bodyText = await page.textContent('body');
+        expect(bodyText).toContain('File Ingest');
+        // Should mention collector upload documentation
+        expect(bodyText).toContain('SharpHound');
+    });
+
+    test('file-upload accepted-types API returns data', async ({ request }) => {
+        const token = await loginViaAPI(request);
+        const response = await request.get('/api/v2/file-upload/accepted-types', {
+            headers: { Authorization: `Bearer ${token}` },
+        });
+        expect(response.status()).toBe(200);
+    });
+
+    // --- Data Quality deeper tests ---
+
+    test('Data Quality page renders with data-testid and environment selector', async ({ page }) => {
+        await page.goto('/ui/administration/data-quality');
+
+        // The page renders with data-testid='data-quality'
+        const dataQuality = page.getByTestId('data-quality');
+        await expect(dataQuality).toBeVisible({ timeout: 15_000 });
+    });
+
+    test('Data Quality page shows title text', async ({ page }) => {
+        await page.goto('/ui/administration/data-quality');
+        await page.waitForSelector('main', { timeout: 15_000 });
+
+        const bodyText = await page.textContent('body');
+        expect(bodyText).toContain('Data Quality');
+    });
+
+    // --- Database Management deeper tests ---
+
+    test('Database Management page renders with data-testid', async ({ page }) => {
+        await page.goto('/ui/administration/database-management');
+
+        const dbMgmt = page.getByTestId('database-management');
+        await expect(dbMgmt).toBeVisible({ timeout: 15_000 });
+    });
+
+    test('Database Management page shows deletion options and caution warning', async ({ page }) => {
+        await page.goto('/ui/administration/database-management');
+        await page.waitForSelector('[data-testid="database-management"]', { timeout: 15_000 });
+
+        const bodyText = await page.textContent('body');
+        expect(bodyText).toContain('Database Management');
+        expect(bodyText).toContain('Caution');
+        // Should have checkboxes for deletion options
+        const checkboxes = page.locator('input[type="checkbox"]');
+        const count = await checkboxes.count();
+        expect(count).toBeGreaterThan(0);
+    });
+
+    // --- Manage Users deeper tests ---
+
+    test('Manage Users page shows users table and create user button', async ({ page }) => {
+        await page.goto('/ui/administration/manage-users');
+
+        const usersTable = page.getByTestId('manage-users_table');
+        await expect(usersTable).toBeVisible({ timeout: 15_000 });
+
+        const createUserBtn = page.getByTestId('manage-users_button-create-user');
+        await expect(createUserBtn).toBeVisible({ timeout: 10_000 });
+    });
+
+    test('Manage Users page displays the admin user in the table', async ({ page }) => {
+        await page.goto('/ui/administration/manage-users');
+        await page.waitForSelector('[data-testid="manage-users_table"]', { timeout: 15_000 });
+
+        // The admin user seeded during setup should appear in the table
+        const tableText = await page.getByTestId('manage-users_table').textContent();
+        expect(tableText).toContain('admin');
+    });
+
+    test('users API returns the admin user', async ({ request }) => {
+        const token = await loginViaAPI(request);
+        const response = await request.get('/api/v2/bloodhound-users', {
+            headers: { Authorization: `Bearer ${token}` },
+        });
+        expect(response.status()).toBe(200);
+        const body = await response.json();
+        expect(body.data).toBeTruthy();
+        expect(body.data.users).toBeTruthy();
+        const adminUser = body.data.users.find((u: any) => u.principal_name === 'admin');
+        expect(adminUser).toBeTruthy();
+    });
+
+    // --- BloodHound Configuration deeper tests ---
+
+    test('BloodHound Configuration page shows Analyze Now and Citrix options', async ({ page }) => {
+        await page.goto('/ui/administration/bloodhound-configuration');
+        await page.waitForSelector('main', { timeout: 15_000 });
+
+        const bodyText = await page.textContent('body');
+        expect(bodyText).toContain('BloodHound Configuration');
+        expect(bodyText).toContain('Analyze Now');
+        expect(bodyText).toContain('Citrix');
+    });
+
+    test('configuration API endpoint returns data', async ({ request }) => {
+        const token = await loginViaAPI(request);
+        const response = await request.get('/api/v2/config', {
+            headers: { Authorization: `Bearer ${token}` },
+        });
+        expect(response.status()).toBe(200);
+        const body = await response.json();
+        expect(body.data).toBeTruthy();
+    });
+});
+
+test.describe('Data Quality page', () => {
+    test.setTimeout(60_000);
+
+    test('available-domains API returns 200', async ({ request }) => {
+        const token = await loginViaAPI(request);
+        const response = await request.get('/api/v2/available-domains', {
+            headers: { Authorization: `Bearer ${token}` },
+        });
+        expect(response.status()).toBe(200);
+        const body = await response.json();
+        expect(body.data).toBeDefined();
+        expect(Array.isArray(body.data)).toBe(true);
+    });
+
+    test('page loads without errors', async ({ page }) => {
+        const errors: Error[] = [];
+        page.on('pageerror', (err) => errors.push(err));
+
+        await loginViaUI(page);
+        await page.goto('/ui/administration/data-quality');
+
+        const container = page.getByTestId('data-quality');
+        await expect(container).toBeVisible({ timeout: 15_000 });
+
+        // No unhandled JS errors should have occurred
+        expect(errors).toHaveLength(0);
+    });
+
+    test('page shows domain selector or empty state', async ({ page }) => {
+        await loginViaUI(page);
+        await page.goto('/ui/administration/data-quality');
+
+        const container = page.getByTestId('data-quality');
+        await expect(container).toBeVisible({ timeout: 15_000 });
+
+        // With no collected domains, the page should show the empty state alert
+        // ("No Domain or Tenant Selected") or show the environment selector
+        const bodyText = await page.textContent('body');
+        const hasEmptyState = bodyText?.includes('No Domain or Tenant Selected');
+        const hasQualityDesc = bodyText?.includes('Understand the data collected');
+
+        // One of these should be true — the page rendered its content
+        expect(hasEmptyState || hasQualityDesc).toBe(true);
     });
 });

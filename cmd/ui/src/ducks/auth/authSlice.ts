@@ -101,15 +101,15 @@ export const initialize = createAsyncThunk<
     }
 >('auth/initialize', async (_, { getState, rejectWithValue }) => {
     const sessionToken = getState().auth.sessionToken;
-    if (sessionToken === null) {
-        throw new Error('No session token provided');
-    }
+
     try {
-        const getSelfResponse = await apiClient.baseClient.get('/api/v2/self', {
-            headers: {
-                Authorization: `Bearer ${sessionToken}`,
-            },
-        });
+        // Build the request config, including the bearer token if we have one.
+        const headers: Record<string, string> = {};
+        if (sessionToken !== null) {
+            headers['Authorization'] = `Bearer ${sessionToken}`;
+        }
+
+        const getSelfResponse = await apiClient.baseClient.get('/api/v2/self', { headers });
 
         // warm up the react-query cache
         queryClient.setQueryData(['getSelf'], getSelfResponse.data.data);
@@ -165,6 +165,12 @@ export const authSlice = createSlice({
         builder.addCase(initialize.fulfilled, (state, action) => {
             state.isInitialized = true;
             state.user = action.payload;
+            // In standalone mode the backend auto-authenticates every request,
+            // so /api/v2/self succeeds without a real session token. Set a
+            // synthetic token so AuthenticatedRoute considers the user logged in.
+            if (state.sessionToken === null) {
+                state.sessionToken = 'standalone';
+            }
         });
         builder.addCase(initialize.rejected, (state) => {
             state.isInitialized = true;

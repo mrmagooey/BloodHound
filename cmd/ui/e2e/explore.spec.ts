@@ -25,6 +25,15 @@ test.describe('Explore / Graph Explorer', () => {
 
         await page.goto('/ui/explore');
         await page.waitForSelector('[data-testid="explore"]', { timeout: 15_000 });
+
+        // When the graph is empty, a FileUploadDialog covers the explore page
+        // and intercepts pointer events. Dismiss it so tests can interact with
+        // the underlying UI.
+        const dialog = page.getByRole('dialog');
+        if (await dialog.isVisible({ timeout: 5_000 }).catch(() => false)) {
+            await page.keyboard.press('Escape');
+            await dialog.waitFor({ state: 'hidden', timeout: 5_000 }).catch(() => {});
+        }
     });
 
     test('explore page loads with graph container', async ({ page }) => {
@@ -53,7 +62,9 @@ test.describe('Explore / Graph Explorer', () => {
     });
 
     test('search widget can be collapsed and expanded', async ({ page }) => {
-        const toggleBtn = page.getByTestId('explore_search-container_header_expand-collapse-button');
+        // The Icon component does not forward data-testid to the DOM, so we
+        // locate the toggle button via its aria-label instead.
+        const toggleBtn = page.getByLabel('Toggle search widget');
         await expect(toggleBtn).toBeVisible({ timeout: 10_000 });
 
         // Click to collapse
@@ -66,6 +77,15 @@ test.describe('Explore / Graph Explorer', () => {
     });
 
     test('clicking Cypher tab switches to cypher search', async ({ page }) => {
+        // When there is no graph data, a FileUploadDialog appears on top of the
+        // explore UI and intercepts pointer events. Dismiss it first by pressing
+        // Escape or clicking its close button.
+        const dialog = page.getByRole('dialog');
+        if (await dialog.isVisible({ timeout: 3_000 }).catch(() => false)) {
+            await page.keyboard.press('Escape');
+            await dialog.waitFor({ state: 'hidden', timeout: 5_000 }).catch(() => {});
+        }
+
         const cypherTab = page.getByTestId('explore_search-container_header_cypher-tab');
         await cypherTab.click();
 
