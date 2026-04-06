@@ -95,6 +95,68 @@ jobs:
           path: bloodhound-standalone
           retention-days: 14
 
+  build-windows:
+    name: Build Windows Binary
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up Rust (GNU toolchain for MinGW compatibility)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-gnu
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Cache Rust target (Windows)
+        uses: actions/cache@v4
+        with:
+          path: kglite-ffi/target
+          key: rust-target-windows-${{ hashFiles('kglite-ffi/Cargo.lock', 'kglite-ffi/src/**', 'kglite-ffi/kglite/**') }}
+          restore-keys: |
+            rust-target-windows-
+
+      - name: Install Yarn
+        run: npm install -g yarn
+
+      - name: Build kglite static library (Windows GNU target)
+        run: cd kglite-ffi && cargo build --release --no-default-features --features ffi --target x86_64-pc-windows-gnu
+
+      - name: Build UI
+        run: yarn install && yarn workspace bloodhound-ui build
+
+      - name: Copy UI assets
+        run: cp -r cmd/ui/dist/. cmd/api/src/api/static/assets/
+        shell: bash
+
+      - name: Build Windows binary
+        env:
+          CGO_ENABLED: "1"
+          GOOS: windows
+          GOARCH: amd64
+          CC: gcc
+          CGO_LDFLAGS: "kglite-ffi/target/x86_64-pc-windows-gnu/release/libkglite.a -lm -lws2_32 -luserenv -lntdll -lbcrypt"
+        run: go build -tags standalone -o bloodhound-standalone.exe ./cmd/api/src/cmd/bhapi
+
+      - name: Upload Windows binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: bloodhound-standalone-windows-amd64
+          path: bloodhound-standalone.exe
+          retention-days: 14
+
   build-container:
     name: Build Container
     runs-on: ubuntu-latest

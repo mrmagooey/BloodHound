@@ -22,6 +22,7 @@ package kglite
 
 /*
 #cgo LDFLAGS: ${SRCDIR}/../../../kglite-ffi/target/release/libkglite.a -lm
+#cgo windows LDFLAGS: -lws2_32 -luserenv -lntdll -lbcrypt
 #include "kglite.h"
 #include <stdlib.h>
 */

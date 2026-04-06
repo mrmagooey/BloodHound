@@ -1,4 +1,4 @@
-.PHONY: init kglite ui build test test-quick test-rust test-comparison test-adminer docker clean
+.PHONY: init kglite ui build build-windows test test-quick test-rust test-comparison test-adminer docker clean
 
 ## Initialize kglite submodule (run once after clone)
 init:
@@ -18,6 +18,13 @@ ui:
 ## Build the standalone binary (includes UI)
 build: kglite ui
 	go build -tags standalone -o bloodhound-standalone ./cmd/api/src/cmd/bhapi
+
+## Build the Windows standalone binary (cross-compile from Linux using MinGW)
+build-windows: ui
+	cd kglite-ffi && cargo build --release --no-default-features --features ffi --target x86_64-pc-windows-gnu
+	GOOS=windows GOARCH=amd64 CGO_ENABLED=1 CC=x86_64-w64-mingw32-gcc \
+		CGO_LDFLAGS="kglite-ffi/target/x86_64-pc-windows-gnu/release/libkglite.a -lm -lws2_32 -luserenv -lntdll -lbcrypt" \
+		go build -tags standalone -o bloodhound-standalone.exe ./cmd/api/src/cmd/bhapi
 
 ## Run all non-comparison e2e tests
 test: kglite
@@ -45,6 +52,6 @@ docker:
 
 ## Remove build artifacts
 clean:
-	rm -f bloodhound-standalone
+	rm -f bloodhound-standalone bloodhound-standalone.exe
 	cd kglite-ffi && cargo clean 2>/dev/null || true
 	find cmd/api/src/api/static/assets -not -name 'keep' -delete 2>/dev/null || true
