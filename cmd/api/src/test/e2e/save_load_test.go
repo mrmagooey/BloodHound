@@ -36,10 +36,8 @@ var saveLoadEdgeKind = graph.StringKind("SaveLoadEdge")
 // TestDriverSaveLoadRoundTrip verifies that data written to a kglite graph
 // survives a Close (save) followed by a re-Open (load) cycle.
 //
-// Known limitation: kglite currently only persists the "name" property on
-// nodes. Other node properties (objectid, age, active, tags, etc.) are lost
-// on save/load. Edge properties DO survive. The test asserts what works and
-// documents what is broken so regressions and fixes are both caught.
+// All node and edge properties must survive the cycle, including properties
+// on nodes created via raw Cypher MERGE that have no registered column schema.
 func TestDriverSaveLoadRoundTrip(t *testing.T) {
 	ctx := context.Background()
 	dir := t.TempDir()
@@ -225,10 +223,8 @@ func TestDriverSaveLoadRoundTrip(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	// -- Known limitation: non-name node properties are NOT persisted --
-	// This subtest documents the current behavior. When kglite is fixed to
-	// persist all node properties, these assertions should be flipped.
-	t.Run("node_property_persistence_limitation", func(t *testing.T) {
+	// -- Non-name node properties must survive save/load --
+	t.Run("node_property_persistence", func(t *testing.T) {
 		err := db2.ReadTransaction(ctx, func(tx graph.Transaction) error {
 			result := tx.Raw("MATCH (n:SaveLoadNode) WHERE n.name = 'alice' RETURN n.objectid, n.age, n.active", nil)
 			defer result.Close()
@@ -238,26 +234,9 @@ func TestDriverSaveLoadRoundTrip(t *testing.T) {
 			require.True(t, result.Next(), "node should exist")
 			vals := result.Values()
 
-			// Currently these are nil after save/load. When kglite is fixed,
-			// change these to assert the expected values instead.
-			if vals[0] != nil {
-				// Fixed! Verify correct values.
-				assert.Equal(t, "SL-1", vals[0], "objectid should be preserved")
-			} else {
-				t.Log("KNOWN LIMITATION: objectid property lost on save/load")
-			}
-
-			if vals[1] != nil {
-				assert.Equal(t, float64(30), vals[1], "age should be preserved")
-			} else {
-				t.Log("KNOWN LIMITATION: age property lost on save/load")
-			}
-
-			if vals[2] != nil {
-				assert.Equal(t, true, vals[2], "active should be preserved")
-			} else {
-				t.Log("KNOWN LIMITATION: active property lost on save/load")
-			}
+			assert.Equal(t, "SL-1", vals[0], "objectid should be preserved")
+			assert.Equal(t, float64(30), vals[1], "age should be preserved")
+			assert.Equal(t, true, vals[2], "active should be preserved")
 			return result.Error()
 		})
 		require.NoError(t, err)
