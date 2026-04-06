@@ -207,18 +207,34 @@ func ingestibleRelationshipsToUpdates(batch *IngestContext, rels []ein.Ingestibl
 		startObjID := strings.ToUpper(rel.Source.Value)
 		endObjID := strings.ToUpper(rel.Target.Value)
 
+		// Use sourceKind (the base kind, e.g. AZBase) as the identity kind for MERGE
+		// so that the MERGE pattern is consistent with IngestNode, which also uses
+		// the base kind as the identity. Using the specific kind (e.g. AZServicePrincipal)
+		// would cause Neo4j to create a separate node for the relationship endpoint that
+		// doesn't match the node already created by IngestNode (which has the base label),
+		// leading to a unique-constraint violation when SET adds the base label to the
+		// new node. Fall back to the specific kind only when sourceKind is unset.
+		startIdentityKind := sourceKind
+		if startIdentityKind == graph.EmptyKind {
+			startIdentityKind = rel.Source.Kind
+		}
+		endIdentityKind := sourceKind
+		if endIdentityKind == graph.EmptyKind {
+			endIdentityKind = rel.Target.Kind
+		}
+
 		update := graph.RelationshipUpdate{
 			Start: graph.PrepareNode(graph.AsProperties(graph.PropertyMap{
 				common.ObjectID: startObjID,
 				common.LastSeen: batch.IngestTime,
 			}), startKinds...),
 			StartIdentityProperties: []string{common.ObjectID.String()},
-			StartIdentityKind:       rel.Source.Kind,
+			StartIdentityKind:       startIdentityKind,
 			End: graph.PrepareNode(graph.AsProperties(graph.PropertyMap{
 				common.ObjectID: endObjID,
 				common.LastSeen: batch.IngestTime,
 			}), endKinds...),
-			EndIdentityKind:       rel.Target.Kind,
+			EndIdentityKind:       endIdentityKind,
 			EndIdentityProperties: []string{common.ObjectID.String()},
 			Relationship:          graph.PrepareRelationship(graph.AsProperties(rel.RelProps), rel.RelType),
 		}
