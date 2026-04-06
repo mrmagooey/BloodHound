@@ -192,6 +192,20 @@ func IngestSessions(batch *IngestContext, sessions []ein.IngestibleSession) erro
 	return errs.Combined()
 }
 
+// baseIdentityKind returns the base identity kind used for MERGE operations.
+// AD entities use "Base"; Azure entities use "AZBase".
+// This must match the identity kind used by IngestNode so that relationship
+// endpoint stubs correctly deduplicate against existing nodes.
+func baseIdentityKind(kind graph.Kind) graph.Kind {
+	if kind == graph.EmptyKind {
+		return graph.StringKind("Base")
+	}
+	if strings.HasPrefix(kind.String(), "AZ") {
+		return graph.StringKind("AZBase")
+	}
+	return graph.StringKind("Base")
+}
+
 // ingestibleRelationshipsToUpdates transforms a list of ingestible relationships into a
 // slice of graph.RelationshipUpdate objects, suitable for ingestion into the
 // graph database.
@@ -207,21 +221,18 @@ func ingestibleRelationshipsToUpdates(batch *IngestContext, rels []ein.Ingestibl
 		startObjID := strings.ToUpper(rel.Source.Value)
 		endObjID := strings.ToUpper(rel.Target.Value)
 
-		// Use sourceKind (the base kind, e.g. AZBase) as the identity kind for MERGE
-		// so that the MERGE pattern is consistent with IngestNode, which also uses
-		// the base kind as the identity. Using the specific kind (e.g. AZServicePrincipal)
-		// would cause Neo4j to create a separate node for the relationship endpoint that
-		// doesn't match the node already created by IngestNode (which has the base label),
-		// leading to a unique-constraint violation when SET adds the base label to the
-		// new node. Fall back to the specific kind only when sourceKind is unset.
-		startIdentityKind := sourceKind
-		if startIdentityKind == graph.EmptyKind {
-			startIdentityKind = rel.Source.Kind
-		}
-		endIdentityKind := sourceKind
-		if endIdentityKind == graph.EmptyKind {
-			endIdentityKind = rel.Target.Kind
-		}
+		// Use the base identity kind (Base for AD, AZBase for Azure) for MERGE operations
+		// on relationship endpoints. This matches what IngestNode uses as its IdentityKind,
+		// ensuring that stub nodes created here deduplicate correctly against nodes already
+		// written by IngestNode.
+		//
+		// Using sourceKind (the file-level kind, e.g. "User" from users.json) for the END
+		// node would be wrong: a MemberOf end node is a Group, not a User, so the MERGE
+		// would create a stub with the wrong primary label. Using rel.Target.Kind directly
+		// (the specific kind) would cause Neo4j unique-constraint violations because the
+		// existing node was merged under the base label.
+		startIdentityKind := baseIdentityKind(rel.Source.Kind)
+		endIdentityKind := baseIdentityKind(rel.Target.Kind)
 
 		update := graph.RelationshipUpdate{
 			Start: graph.PrepareNode(graph.AsProperties(graph.PropertyMap{

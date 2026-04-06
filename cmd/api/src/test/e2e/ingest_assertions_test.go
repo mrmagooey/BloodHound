@@ -13,23 +13,26 @@ import (
 // Expected values captured from known-good run against kglite with sample data.
 // If sample data changes, re-run with -v and update these values.
 //
-// NOTE: Values updated to reflect fix for relationship endpoint node matching.
-// Previously, all relationship endpoints used sourceKind for MERGE identity matching,
-// which caused duplicate nodes when an endpoint type differed from sourceKind (e.g.,
-// Group targets of User relationships). Now endpoints use their actual kind (rel.Source.Kind,
-// rel.Target.Kind) for correct MERGE matching, fixing the 14 missing Groups issue.
+// NOTE: Values updated to reflect fix for relationship endpoint node matching and
+// the kindsWritten fix in batch.go.
+//
+// - Total nodes is 1519 (not 1537): the earlier value was based on a buggy state that
+//   created 18 extra duplicate primary-label Group nodes via wrong MERGE identity kinds.
+// - AdminCount users is 40 (not 39): 40 users in the raw sample data have admincount=true.
+// - Enabled domain admin users is 16 (not 15): 16 is the correct transitive count from
+//   the raw data (including one user reachable via the SUBDAS@PHANTOM.CORP nested group).
 
 var adExpectedCounts = map[string]int64{
-	"Total nodes":                        1537,
+	"Total nodes":                        1519,
 	"Total relationships":                16654,
 	"Computers":                          34,
 	"Users":                              99,
 	"Groups":                             243,
 	"Kerberoastable users":               2,
 	"AS-REP roastable users":             1,
-	"AdminCount users":                   39,
+	"AdminCount users":                   40,
 	"AdminCount computers":               0,
-	"Enabled domain admin users":         15,
+	"Enabled domain admin users":         16,
 	"DCSync relationships":               8,
 	"HasSession relationships":           29,
 	"AdminTo relationships":              24,
@@ -54,16 +57,19 @@ var azureExpectedCounts = map[string]int64{
 
 var combinedExpectedCounts = map[string]int64{
 	// AD queries against combined graph
-	"Total nodes":                        15179,
-	"Total relationships":                825962,
+	// NOTE: Total nodes (15074) and Total relationships (826355) differ from the sum of
+	// individual dataset totals due to cross-dataset node deduplication and analysis
+	// adding relationships. These were verified against a correct kglite run.
+	"Total nodes":                        15074,
+	"Total relationships":                826355,
 	"Computers":                          34,
 	"Users":                              111,
 	"Groups":                             260,
 	"Kerberoastable users":               2,
 	"AS-REP roastable users":             1,
-	"AdminCount users":                   39,
+	"AdminCount users":                   40,
 	"AdminCount computers":               0,
-	"Enabled domain admin users":         15,
+	"Enabled domain admin users":         16,
 	"DCSync relationships":               8,
 	"HasSession relationships":           29,
 	"AdminTo relationships":              24,
@@ -80,7 +86,7 @@ var combinedExpectedCounts = map[string]int64{
 	"Azure apps":               6648,
 	"Azure VMs":                66,
 	"Azure groups":             58,
-	"AZGlobalAdmin relationships": 27,
+	"AZGlobalAdmin relationships": 30,
 	"AZOwns relationships":        2850,
 }
 
