@@ -580,8 +580,8 @@ func TestBatchUpdateNodeByNilNode(t *testing.T) {
 	require.Error(t, err)
 }
 
-// TestBatchUpdateNodeByMultipleKinds verifies that UpdateNodeBy stores __kinds
-// when the node has multiple kinds.
+// TestBatchUpdateNodeByMultipleKinds verifies that UpdateNodeBy handles nodes
+// with multiple kinds correctly.
 func TestBatchUpdateNodeByMultipleKinds(t *testing.T) {
 	ctx := context.Background()
 	db := openGraph(t)

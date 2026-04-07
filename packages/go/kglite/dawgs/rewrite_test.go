@@ -87,17 +87,17 @@ func TestRewriteLabelWhere(t *testing.T) {
 		{
 			name:   "basic label check",
 			input:  "MATCH (n) WHERE n:Computer RETURN n",
-			expect: `MATCH (n) WHERE (n.__kinds CONTAINS '"Computer"' OR labels(n) CONTAINS '"Computer"') RETURN n`,
+			expect: `MATCH (n) WHERE labels(n) CONTAINS '"Computer"' RETURN n`,
 		},
 		{
 			name:   "combined with other condition",
 			input:  "MATCH (n) WHERE n:Computer AND n.enabled RETURN n",
-			expect: `MATCH (n) WHERE (n.__kinds CONTAINS '"Computer"' OR labels(n) CONTAINS '"Computer"') AND n.enabled RETURN n`,
+			expect: `MATCH (n) WHERE labels(n) CONTAINS '"Computer"' AND n.enabled RETURN n`,
 		},
 		{
 			name:   "multiple label checks with OR",
 			input:  "MATCH (n) WHERE n:User OR n:Computer RETURN n",
-			expect: `MATCH (n) WHERE (n.__kinds CONTAINS '"User"' OR labels(n) CONTAINS '"User"') OR (n.__kinds CONTAINS '"Computer"' OR labels(n) CONTAINS '"Computer"') RETURN n`,
+			expect: `MATCH (n) WHERE labels(n) CONTAINS '"User"' OR labels(n) CONTAINS '"Computer"' RETURN n`,
 		},
 		{
 			name:   "no WHERE clause passthrough",
@@ -117,9 +117,6 @@ func TestRewriteLabelWhere(t *testing.T) {
 		{
 			name:   "colon in string literal in WHERE NOT rewritten",
 			input:  "MATCH (n) WHERE n.name = 'foo:bar' RETURN n",
-			// String literals should NOT be rewritten — the regex may match
-			// word:word patterns but the extractWhereBody helper preserves
-			// string content correctly.
 			expect: `MATCH (n) WHERE n.name = 'foo:bar' RETURN n`,
 		},
 		{
@@ -135,12 +132,12 @@ func TestRewriteLabelWhere(t *testing.T) {
 		{
 			name:   "label check in second WHERE still rewritten",
 			input:  "MATCH (a) WHERE a.x = 1 MATCH (b) WHERE b:Computer RETURN b",
-			expect: `MATCH (a) WHERE a.x = 1 MATCH (b) WHERE (b.__kinds CONTAINS '"Computer"' OR labels(b) CONTAINS '"Computer"') RETURN b`,
+			expect: `MATCH (a) WHERE a.x = 1 MATCH (b) WHERE labels(b) CONTAINS '"Computer"' RETURN b`,
 		},
 		{
 			name:   "label check in nested parens",
 			input:  "match (n) where n.objectid ends with $p0 and not ((n:Group or n:ADLocalGroup)) return n",
-			expect: `match (n) where n.objectid ends with $p0 and not (((n.__kinds CONTAINS '"Group"' OR labels(n) CONTAINS '"Group"') or (n.__kinds CONTAINS '"ADLocalGroup"' OR labels(n) CONTAINS '"ADLocalGroup"'))) return n`,
+			expect: `match (n) where n.objectid ends with $p0 and not ((labels(n) CONTAINS '"Group"' or labels(n) CONTAINS '"ADLocalGroup"')) return n`,
 		},
 	}
 
@@ -292,7 +289,7 @@ func TestRewriteForKglite(t *testing.T) {
 			name:   "triggers all three rewrites",
 			input:  "MATCH (a)-[:TypeA|TypeB]->(b) WHERE b:Computer AND b.id IN $ids RETURN b",
 			params: map[string]any{"ids": []string{"x", "y"}},
-			expect: `MATCH (a)-[_kgrt0]->(b) WHERE type(_kgrt0) IN ['TypeA', 'TypeB'] AND (b.__kinds CONTAINS '"Computer"' OR labels(b) CONTAINS '"Computer"') AND b.id IN ['x', 'y'] RETURN b`,
+			expect: `MATCH (a)-[_kgrt0]->(b) WHERE type(_kgrt0) IN ['TypeA', 'TypeB'] AND labels(b) CONTAINS '"Computer"' AND b.id IN ['x', 'y'] RETURN b`,
 		},
 		{
 			name:   "triggers none",

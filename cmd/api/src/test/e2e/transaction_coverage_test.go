@@ -252,7 +252,7 @@ func TestTransactionCoverageUpdateNode(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	// Test UpdateNode with multiple kinds (triggers __kinds property)
+	// Test UpdateNode with multiple kinds (absorbed into extra_labels by kglite)
 	err = db.WriteTransaction(ctx, func(tx graph.Transaction) error {
 		multiKindNode := &graph.Node{
 			ID:    nodeID,
