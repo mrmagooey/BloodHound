@@ -355,6 +355,13 @@ func reportComparison(t *testing.T, results []comparisonResult) {
 			r.Neo4jDur.Round(time.Microsecond),
 			speedup,
 			status)
+		if status == "ERROR" {
+			t.Logf("  FULL ERROR: kglite=%v neo4j=%v", r.KgliteErr, r.Neo4jErr)
+		}
+		if status == "MISMATCH" || status == "ERROR" {
+			t.Logf("  DETAIL: kglite=%s", truncateStr(kStr, 200))
+			t.Logf("  DETAIL: neo4j =%s", truncateStr(nStr, 200))
+		}
 	}
 
 	t.Logf("%s", strings.Repeat("-", 140))

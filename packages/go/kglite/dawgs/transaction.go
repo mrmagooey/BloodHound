@@ -167,26 +167,185 @@ func rewriteMultiTypeRel(cypher string) string {
 // it only works in MATCH patterns. Secondary labels (e.g. Domain, Entity)
 // are stored in the __kinds property, while the primary label is returned
 // by labels(). We check both to handle all cases.
+//
+// This function is careful to only rewrite var:Kind patterns that appear
+// inside WHERE clause bodies — NOT inside MATCH patterns, relationship
+// brackets [...], or property blocks {...} from subsequent MATCH clauses.
 func rewriteLabelWhere(cypher string) string {
 	lower := strings.ToLower(cypher)
-	whereIdx := strings.Index(lower, " where ")
-	if whereIdx < 0 {
+	if !strings.Contains(lower, " where ") {
 		return cypher
 	}
 
-	matchPart := cypher[:whereIdx+1]     // everything up to (and including) the space before WHERE
-	whereOnward := cypher[whereIdx+1:]   // "where ..." and everything after
+	var result strings.Builder
+	result.Grow(len(cypher) * 2)
 
-	// Replace all var:Kind occurrences in the WHERE clause and beyond.
-	// The MATCH pattern (before WHERE) is left untouched.
-	whereOnward = reVarKindInWhere.ReplaceAllStringFunc(whereOnward, func(m string) string {
-		sub := reVarKindInWhere.FindStringSubmatch(m)
+	i := 0
+	n := len(cypher)
+	for i < n {
+		// Look for WHERE keyword at a clause boundary (space-delimited)
+		if i+7 <= n && (i == 0 || cypher[i] == ' ') {
+			start := i
+			if cypher[i] == ' ' {
+				start = i + 1
+			}
+			if start+5 <= n && strings.EqualFold(cypher[start:start+5], "WHERE") &&
+				(start+5 >= n || cypher[start+5] == ' ' || cypher[start+5] == '(') {
+				// Found WHERE keyword. Write it, then process its body.
+				result.WriteString(cypher[i : start+5])
+				i = start + 5
+
+				// Process the WHERE clause body until the next top-level clause keyword.
+				whereBody := extractWhereBody(cypher, i)
+				rewritten := rewriteLabelsInWhereBody(whereBody)
+				result.WriteString(rewritten)
+				i += len(whereBody)
+				continue
+			}
+		}
+		result.WriteByte(cypher[i])
+		i++
+	}
+
+	return result.String()
+}
+
+// rewriteLabelsInWhereBody applies the var:Kind → __kinds/labels() rewrite
+// within a WHERE clause body, skipping string literals to avoid false matches.
+func rewriteLabelsInWhereBody(body string) string {
+	// Find all string literal spans so we can skip them during replacement
+	type span struct{ start, end int }
+	var literals []span
+
+	for i := 0; i < len(body); i++ {
+		if body[i] == '\'' || body[i] == '"' {
+			quote := body[i]
+			j := i + 1
+			for j < len(body) {
+				if body[j] == '\\' && j+1 < len(body) {
+					j += 2
+					continue
+				}
+				if body[j] == quote {
+					j++
+					break
+				}
+				j++
+			}
+			literals = append(literals, span{i, j})
+			i = j - 1
+		}
+	}
+
+	inLiteral := func(pos int) bool {
+		for _, s := range literals {
+			if pos >= s.start && pos < s.end {
+				return true
+			}
+		}
+		return false
+	}
+
+	matches := reVarKindInWhere.FindAllStringIndex(body, -1)
+	if len(matches) == 0 {
+		return body
+	}
+
+	var result strings.Builder
+	result.Grow(len(body) * 2)
+	prev := 0
+	for _, m := range matches {
+		if inLiteral(m[0]) {
+			continue
+		}
+		result.WriteString(body[prev:m[0]])
+		sub := reVarKindInWhere.FindStringSubmatch(body[m[0]:m[1]])
 		varName, kind := sub[1], sub[2]
 		kind = strings.Trim(kind, "`")
-		return fmt.Sprintf(`(%s.__kinds CONTAINS '"%s"' OR labels(%s) CONTAINS '"%s"')`, varName, kind, varName, kind)
-	})
+		result.WriteString(fmt.Sprintf(`(%s.__kinds CONTAINS '"%s"' OR labels(%s) CONTAINS '"%s"')`, varName, kind, varName, kind))
+		prev = m[1]
+	}
+	result.WriteString(body[prev:])
+	return result.String()
+}
 
-	return matchPart + whereOnward
+// extractWhereBody extracts the body of a WHERE clause starting at position i
+// in the cypher string. It returns the substring from i to the start of the
+// next top-level clause keyword (MATCH, RETURN, WITH, ORDER, etc.), respecting
+// parentheses, brackets, and brace nesting so that nested MATCH patterns in
+// multi-MATCH queries are not included.
+func extractWhereBody(cypher string, start int) string {
+	n := len(cypher)
+	i := start
+	parenDepth := 0
+	bracketDepth := 0
+	braceDepth := 0
+
+	for i < n {
+		ch := cypher[i]
+
+		// Track string literals to avoid matching keywords inside them
+		if ch == '\'' || ch == '"' {
+			quote := ch
+			i++
+			for i < n {
+				if cypher[i] == '\\' && i+1 < n {
+					i += 2
+					continue
+				}
+				if cypher[i] == quote {
+					i++
+					break
+				}
+				i++
+			}
+			continue
+		}
+
+		// Track nesting
+		switch ch {
+		case '(':
+			parenDepth++
+		case ')':
+			if parenDepth > 0 {
+				parenDepth--
+			}
+		case '[':
+			bracketDepth++
+		case ']':
+			if bracketDepth > 0 {
+				bracketDepth--
+			}
+		case '{':
+			braceDepth++
+		case '}':
+			if braceDepth > 0 {
+				braceDepth--
+			}
+		}
+
+		// Only check for clause keywords at the top level (not nested)
+		if parenDepth == 0 && bracketDepth == 0 && braceDepth == 0 && ch == ' ' {
+			remaining := strings.ToUpper(cypher[i:])
+			for _, kw := range []string{" MATCH ", " RETURN ", " WITH ", " ORDER ", " LIMIT ", " SKIP ", " UNION ", " CREATE ", " SET ", " DELETE ", " MERGE ", " REMOVE ", " UNWIND "} {
+				if strings.HasPrefix(remaining, kw) {
+					// "STARTS WITH" and "ENDS WITH" are NOT clause boundaries —
+					// they are string comparison operators. Check preceding text.
+					if kw == " WITH " {
+						preceding := strings.ToUpper(strings.TrimRight(cypher[start:i], " "))
+						if strings.HasSuffix(preceding, "STARTS") || strings.HasSuffix(preceding, "ENDS") {
+							continue
+						}
+					}
+					return cypher[start:i]
+				}
+			}
+		}
+
+		i++
+	}
+
+	return cypher[start:]
 }
 
 // Transaction implements graph.Transaction using kglite.

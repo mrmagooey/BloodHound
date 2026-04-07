@@ -115,11 +115,32 @@ func TestRewriteLabelWhere(t *testing.T) {
 			expect: "MATCH (n:Computer) RETURN n",
 		},
 		{
-			name:   "colon in string literal in WHERE gets rewritten",
+			name:   "colon in string literal in WHERE NOT rewritten",
 			input:  "MATCH (n) WHERE n.name = 'foo:bar' RETURN n",
-			// The regex does match word:word patterns inside string literals.
-			// This documents current behavior: foo:bar is rewritten.
-			expect: `MATCH (n) WHERE n.name = '(foo.__kinds CONTAINS '"bar"' OR labels(foo) CONTAINS '"bar"')' RETURN n`,
+			// String literals should NOT be rewritten — the regex may match
+			// word:word patterns but the extractWhereBody helper preserves
+			// string content correctly.
+			expect: `MATCH (n) WHERE n.name = 'foo:bar' RETURN n`,
+		},
+		{
+			name:   "multi-MATCH with property block not rewritten",
+			input:  "MATCH (gg:Group) WHERE gg.members_count IS NOT NULL MATCH (g)-[r2{isacl:true}]->(n) RETURN g.name",
+			expect: "MATCH (gg:Group) WHERE gg.members_count IS NOT NULL MATCH (g)-[r2{isacl:true}]->(n) RETURN g.name",
+		},
+		{
+			name:   "multi-MATCH with relationship type not rewritten",
+			input:  "MATCH (n:Group) WHERE n.name STARTS WITH 'PRE' MATCH (m)-[r:MemberOf]->(n) RETURN m.name",
+			expect: "MATCH (n:Group) WHERE n.name STARTS WITH 'PRE' MATCH (m)-[r:MemberOf]->(n) RETURN m.name",
+		},
+		{
+			name:   "label check in second WHERE still rewritten",
+			input:  "MATCH (a) WHERE a.x = 1 MATCH (b) WHERE b:Computer RETURN b",
+			expect: `MATCH (a) WHERE a.x = 1 MATCH (b) WHERE (b.__kinds CONTAINS '"Computer"' OR labels(b) CONTAINS '"Computer"') RETURN b`,
+		},
+		{
+			name:   "label check in nested parens",
+			input:  "match (n) where n.objectid ends with $p0 and not ((n:Group or n:ADLocalGroup)) return n",
+			expect: `match (n) where n.objectid ends with $p0 and not (((n.__kinds CONTAINS '"Group"' OR labels(n) CONTAINS '"Group"') or (n.__kinds CONTAINS '"ADLocalGroup"' OR labels(n) CONTAINS '"ADLocalGroup"'))) return n`,
 		},
 	}
 

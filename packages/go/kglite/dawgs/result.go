@@ -125,6 +125,16 @@ func convertValue(v interface{}) interface{} {
 				}
 			}
 		}
+		// Check for JSON-encoded arrays (e.g. labels() returns '["Base", "User"]')
+		if len(typed) > 1 && typed[0] == '[' {
+			var arr []interface{}
+			if err := jsonUnmarshal([]byte(typed), &arr); err == nil {
+				for i, elem := range arr {
+					arr[i] = convertJSONValue(elem)
+				}
+				return arr
+			}
+		}
 		return v
 	default:
 		return v
@@ -215,6 +225,15 @@ func jsonToPath(m map[string]interface{}) *graph.Path {
 
 	if nodesRaw, ok := m["nodes"].([]interface{}); ok {
 		for _, nRaw := range nodesRaw {
+			// Nodes may be either a plain integer index (legacy) or a full property
+			// object emitted by the fixed executor (has "__node_idx" key).
+			if nm, ok := nRaw.(map[string]interface{}); ok {
+				if nodeIdxRaw, hasIdx := nm["__node_idx"]; hasIdx {
+					path.Nodes = append(path.Nodes, jsonToNode(nm, nodeIdxRaw))
+					continue
+				}
+			}
+			// Fallback: bare integer index — create a node with no properties.
 			nodeIdx := graph.ID(toUint64(nRaw))
 			path.Nodes = append(path.Nodes, graph.NewNode(nodeIdx, graph.NewProperties()))
 		}

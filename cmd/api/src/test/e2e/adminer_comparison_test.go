@@ -313,6 +313,18 @@ func TestCompareADMinerAzure(t *testing.T) {
 	nIngestDur := ingestZip(ctx, t, neo4jDB, azureZip, ingestSchema)
 	t.Logf("  Neo4j ingest: %s", nIngestDur.Round(time.Millisecond))
 
+	// Debug: check label matching before analysis
+	debugResult1, _, _ := runQueryValues(ctx, t, kgliteDB, "MATCH (n:AZUser) RETURN count(n)")
+	debugResult2, _, _ := runQueryValues(ctx, t, kgliteDB, "MATCH (n:AZBase) RETURN count(n)")
+	debugResult3, _, _ := runQueryValues(ctx, t, kgliteDB, "MATCH (n:AZBase) WHERE n.__kinds IS NOT NULL RETURN count(n)")
+	debugResult4, _, _ := runQueryValues(ctx, t, kgliteDB, "MATCH (n) WHERE n.__kinds IS NOT NULL RETURN count(n)")
+	debugResult5, _, _ := runQueryValues(ctx, t, kgliteDB, "MATCH (n:AZUser) RETURN n.name, n.objectid LIMIT 3")
+	t.Logf("DEBUG AZUser count: %s", debugResult1)
+	t.Logf("DEBUG AZBase count: %s", debugResult2)
+	t.Logf("DEBUG AZBase with __kinds: %s", debugResult3)
+	t.Logf("DEBUG all with __kinds: %s", debugResult4)
+	t.Logf("DEBUG AZUser sample: %s", debugResult5)
+
 	t.Log("=== Running analysis on kglite ===")
 	kAnalysisDur := runAnalysis(ctx, t, kgliteDB)
 	t.Log("=== Running analysis on Neo4j ===")
