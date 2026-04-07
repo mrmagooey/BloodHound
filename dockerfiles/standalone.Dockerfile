@@ -9,6 +9,7 @@ WORKDIR /build/kglite-ffi
 COPY kglite-ffi/Cargo.toml kglite-ffi/Cargo.lock ./
 COPY kglite-ffi/src ./src
 COPY kglite-ffi/kglite ./kglite
+COPY kglite-ffi/benches ./benches
 
 RUN cargo build --release --no-default-features --features ffi
 
