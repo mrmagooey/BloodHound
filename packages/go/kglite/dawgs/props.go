@@ -72,6 +72,12 @@ func setClause(varName, prefix string, props map[string]any) (string, map[string
 
 	parts := make([]string, 0, len(keys))
 	for _, k := range keys {
+		// Skip "id" — kglite uses it as the immutable node identity. Source data
+		// that includes "id" in properties (e.g. GitHound SCIM exports) is always
+		// redundant with the top-level objectid already stored via MERGE.
+		if k == "id" {
+			continue
+		}
 		v := props[k]
 		paramKey := prefix + sanitizeKey(k)
 		params[paramKey] = scalarize(v)

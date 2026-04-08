@@ -187,6 +187,22 @@ func TestSetClauseNilMap(t *testing.T) {
 	}
 }
 
+func TestSetClauseDropsID(t *testing.T) {
+	frag, params := setClause("n", "p_", map[string]any{
+		"id":   12345,
+		"name": "alice",
+	})
+	if strings.Contains(frag, "n.id") {
+		t.Errorf("setClause should drop 'id' property, got %q", frag)
+	}
+	if _, ok := params["p_id"]; ok {
+		t.Error("params should not contain p_id")
+	}
+	if frag != "n.name = $p_name" {
+		t.Errorf("expected only name in SET fragment, got %q", frag)
+	}
+}
+
 // ─── mergeParams ──────────────────────────────────────────────────────────────
 
 func TestMergeParamsNoOverlap(t *testing.T) {

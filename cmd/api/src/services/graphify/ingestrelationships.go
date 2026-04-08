@@ -206,6 +206,37 @@ func baseIdentityKind(kind graph.Kind) graph.Kind {
 	return graph.StringKind("Base")
 }
 
+// endpointIdentityKind returns the identity kind for a relationship endpoint.
+// For AD/Azure endpoints, returns the classical base kind (Base/AZBase).
+// For OpenGraph endpoints (Okta, GitHub, Jamf, etc.), returns sourceKind to
+// match what IngestNode uses, ensuring endpoint stubs deduplicate correctly
+// against nodes already written by IngestNode.
+func endpointIdentityKind(sourceKind graph.Kind, endpointKind graph.Kind) graph.Kind {
+	if endpointKind == graph.EmptyKind {
+		return baseIdentityKind(endpointKind)
+	}
+	s := endpointKind.String()
+	// AD and Azure kinds use their well-known base labels
+	if strings.HasPrefix(s, "AZ") {
+		return graph.StringKind("AZBase")
+	}
+	if isADKind(s) {
+		return graph.StringKind("Base")
+	}
+	// OpenGraph: use sourceKind to match IngestNode's IdentityKind
+	if sourceKind != graph.EmptyKind {
+		return sourceKind
+	}
+	return graph.StringKind("Base")
+}
+
+// isADKind reports whether a kind string is a known AD entity type.
+func isADKind(s string) bool {
+	// AD kinds are short, unnamespaced names (User, Computer, Group, Domain, etc.)
+	// OpenGraph kinds are typically namespaced (Okta_User, GH_Repository, jamf_Computer, etc.)
+	return !strings.Contains(s, "_")
+}
+
 // ingestibleRelationshipsToUpdates transforms a list of ingestible relationships into a
 // slice of graph.RelationshipUpdate objects, suitable for ingestion into the
 // graph database.
@@ -221,18 +252,12 @@ func ingestibleRelationshipsToUpdates(batch *IngestContext, rels []ein.Ingestibl
 		startObjID := strings.ToUpper(rel.Source.Value)
 		endObjID := strings.ToUpper(rel.Target.Value)
 
-		// Use the base identity kind (Base for AD, AZBase for Azure) for MERGE operations
-		// on relationship endpoints. This matches what IngestNode uses as its IdentityKind,
-		// ensuring that stub nodes created here deduplicate correctly against nodes already
-		// written by IngestNode.
-		//
-		// Using sourceKind (the file-level kind, e.g. "User" from users.json) for the END
-		// node would be wrong: a MemberOf end node is a Group, not a User, so the MERGE
-		// would create a stub with the wrong primary label. Using rel.Target.Kind directly
-		// (the specific kind) would cause Neo4j unique-constraint violations because the
-		// existing node was merged under the base label.
-		startIdentityKind := baseIdentityKind(rel.Source.Kind)
-		endIdentityKind := baseIdentityKind(rel.Target.Kind)
+		// Use the base identity kind for MERGE operations on relationship endpoints.
+		// AD entities use "Base", Azure entities use "AZBase", and OpenGraph entities
+		// use sourceKind. This must match what IngestNode uses as its IdentityKind so
+		// that stub nodes created here deduplicate correctly against existing nodes.
+		startIdentityKind := endpointIdentityKind(sourceKind, rel.Source.Kind)
+		endIdentityKind := endpointIdentityKind(sourceKind, rel.Target.Kind)
 
 		update := graph.RelationshipUpdate{
 			Start: graph.PrepareNode(graph.AsProperties(graph.PropertyMap{

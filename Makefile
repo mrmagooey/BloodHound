@@ -1,4 +1,4 @@
-.PHONY: init kglite ui build build-windows test test-quick test-rust test-comparison test-adminer docker clean
+.PHONY: init kglite ui build build-windows test test-quick test-rust test-comparison test-adminer test-knexus docker clean
 
 ## Initialize kglite submodule (run once after clone)
 init:
@@ -45,6 +45,10 @@ test-comparison: kglite
 ## Run AD_Miner comparison tests against Neo4j
 test-adminer: kglite
 	go test -v -tags 'e2e comparison' -timeout 30m -run TestCompareADMiner ./cmd/api/src/test/e2e/
+
+## Run k-nexus-global comparison tests against Neo4j
+test-knexus: kglite
+	go test -v -tags 'e2e comparison' -timeout 30m -run TestCompareKNexus ./cmd/api/src/test/e2e/
 
 ## Build Docker container
 docker:
