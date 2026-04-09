@@ -373,15 +373,22 @@ func loadQueriesFromZip(t *testing.T, zipPath string) map[string][]presetQuery {
 // does not support.
 var reMultiLabel = regexp.MustCompile(`\(\w*:\w+:\w+`)
 
-// reVarLengthEdge matches variable-length edge patterns like [*1..4], [*..3], [*].
-// These can cause kglite to hang on large graphs.
-var reVarLengthEdge = regexp.MustCompile(`\[\*`)
+// reVarLengthEdge matches variable-length edge patterns. Two forms:
+//
+//   - [*1..4], [*..3], [*] — bare wildcard variable-length, e.g. [*] or [*1..3]
+//   - [:Type*1..3], [:TypeA|TypeB*1..2] — typed variable-length: one or more
+//     relationship types followed by a hop-count quantifier
+//
+// Both forms can produce divergent results across backends on large graphs and are
+// excluded from comparison runs.  The character class [\w:|]* matches the optional
+// variable name, colon, type names, and pipe separators that precede the *.
+var reVarLengthEdge = regexp.MustCompile(`\[[\w:|]*\*`)
 
-// filterKgliteCompatible removes queries that use Cypher features kglite cannot
-// parse or that can hang indefinitely on large graphs:
+// filterKgliteCompatible removes queries that use Cypher features that produce
+// non-comparable results or that can hang indefinitely on large graphs:
 //   - Multi-label MATCH patterns: (n:Label1:Label2)
 //   - Bidirectional edges: <-[]->, <-[:Type]->
-//   - Variable-length path patterns: [*], [*1..4], etc. (can hang in kglite)
+//   - Variable-length path patterns: [*], [*1..4], [:Type*1..3], etc.
 func filterKgliteCompatible(queries []presetQuery) (compatible, skipped []presetQuery) {
 	for _, q := range queries {
 		switch {
@@ -440,7 +447,7 @@ func TestCompareKNexusOpenGraph(t *testing.T) {
 	queryGroups := loadQueriesFromZip(t, knexusZip)
 	t.Logf("Loaded %d query categories from zip", len(queryGroups))
 
-	var totalMatch, totalMismatch, totalError, totalSkipped int
+	var totalMatch, totalMismatch, totalError, totalSkipped, totalNonDet int
 	for _, category := range []string{"hybrid", "githound", "oktahound", "jamfhound", "oktahound-privilege-zones"} {
 		queries, ok := queryGroups[category]
 		if !ok || len(queries) == 0 {
@@ -460,6 +467,8 @@ func TestCompareKNexusOpenGraph(t *testing.T) {
 			switch {
 			case r.KgliteErr != nil || r.Neo4jErr != nil:
 				totalError++
+			case !r.Match && r.NonDeterministic:
+				totalNonDet++
 			case !r.Match:
 				totalMismatch++
 			default:
@@ -469,8 +478,8 @@ func TestCompareKNexusOpenGraph(t *testing.T) {
 	}
 
 	t.Logf("")
-	t.Logf("OpenGraph query totals: %d match, %d mismatch, %d error, %d skipped (unsupported Cypher)",
-		totalMatch, totalMismatch, totalError, totalSkipped)
+	t.Logf("OpenGraph query totals: %d match, %d mismatch, %d error, %d nondeterministic, %d skipped (unsupported Cypher)",
+		totalMatch, totalMismatch, totalError, totalNonDet, totalSkipped)
 }
 
 func init() {

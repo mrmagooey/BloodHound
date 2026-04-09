@@ -7,5 +7,5 @@
             "type": ["string","null"]
         }
     },
-    "additionalProperties": false
+    "additionalProperties": true
 }

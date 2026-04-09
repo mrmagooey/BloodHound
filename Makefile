@@ -40,7 +40,7 @@ test-rust:
 
 ## Run kglite vs Neo4j comparison tests (requires: docker compose -f docker-compose.testing.yml up -d)
 test-comparison: kglite
-	go test -v -tags 'e2e comparison' -timeout 30m -run 'TestCompareAzure|TestCompareAD$$' ./cmd/api/src/test/e2e/
+	go test -v -tags 'e2e comparison' -timeout 30m -run 'TestCompareAzure|TestCompareAD$$|TestCompareKNexus' ./cmd/api/src/test/e2e/
 
 ## Run AD_Miner comparison tests against Neo4j
 test-adminer: kglite

@@ -418,6 +418,43 @@ func (b *Batch) UpdateRelationshipBy(update graph.RelationshipUpdate) error {
 		setParts = append(setParts, endSetFrag)
 	}
 
+	// Add extra labels for endpoint stubs — mirrors Neo4j's "SET s:Kind1, s:Kind2" behaviour.
+	// When a relationship endpoint references a node by a different identity kind than its
+	// declared kind (e.g., a "User" endpoint matched by "Base"), the stub node must also
+	// receive its declared kind as an extra label so that label-filtered queries (e.g.
+	// MATCH (n:User)) can find it. Without this, stub nodes are stranded under their
+	// identity kind only (e.g. "Base") and are invisible to label-specific queries.
+	// The identity kind (first kind in the list, used in the MERGE pattern) is already the
+	// primary label of the node; extra kinds are secondary labels added here.
+	for _, k := range update.Start.Kinds {
+		if k == graph.EmptyKind {
+			continue
+		}
+		kindLabelStr := k.String()
+		if kindLabelStr == "" {
+			continue
+		}
+		// Skip the identity kind — it is already the primary label from the MERGE pattern
+		if update.StartIdentityKind != nil && kindLabelStr == update.StartIdentityKind.String() {
+			continue
+		}
+		setParts = append(setParts, fmt.Sprintf("s:%s", quoteIdent(kindLabelStr)))
+	}
+	for _, k := range update.End.Kinds {
+		if k == graph.EmptyKind {
+			continue
+		}
+		kindLabelStr := k.String()
+		if kindLabelStr == "" {
+			continue
+		}
+		// Skip the identity kind — it is already the primary label from the MERGE pattern
+		if update.EndIdentityKind != nil && kindLabelStr == update.EndIdentityKind.String() {
+			continue
+		}
+		setParts = append(setParts, fmt.Sprintf("e:%s", quoteIdent(kindLabelStr)))
+	}
+
 	if len(setParts) > 0 {
 		cypher += " SET " + strings.Join(setParts, ", ")
 	}

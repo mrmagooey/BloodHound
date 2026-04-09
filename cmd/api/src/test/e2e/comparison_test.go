@@ -125,6 +125,10 @@ type comparisonResult struct {
 	Neo4jDur     time.Duration
 	Neo4jErr     error
 	Match        bool
+	// NonDeterministic is set when the query has LIMIT but no ORDER BY: both backends
+	// may return different but equally-valid subsets of a larger result set, so a
+	// content mismatch is expected and should not be counted as a failure.
+	NonDeterministic bool
 }
 
 // serializeValue converts a query result value to a stable string representation.
@@ -266,6 +270,19 @@ func hasOrderBy(cypher string) bool {
 	return strings.Contains(strings.ToUpper(cypher), "ORDER BY")
 }
 
+// hasLimit reports whether a Cypher query contains a LIMIT clause (case-insensitive).
+func hasLimit(cypher string) bool {
+	return strings.Contains(strings.ToUpper(cypher), "LIMIT")
+}
+
+// isNonDeterministicQuery reports whether a query has LIMIT but no ORDER BY.
+// Such queries ask each backend to return an arbitrary subset of a potentially
+// larger result set. Both backends can return different but equally-valid rows,
+// so content mismatches are expected and should not be counted as failures.
+func isNonDeterministicQuery(cypher string) bool {
+	return hasLimit(cypher) && !hasOrderBy(cypher)
+}
+
 func compareQueries(ctx context.Context, t *testing.T,
 	kgliteDB, neo4jDB graph.Database, queries []presetQuery) []comparisonResult {
 	t.Helper()
@@ -285,16 +302,19 @@ func compareQueries(ctx context.Context, t *testing.T,
 			nNorm = sortLines(nNorm)
 		}
 
+		nonDeterministic := isNonDeterministicQuery(q.Cypher)
+
 		results = append(results, comparisonResult{
-			QueryName:    q.Name,
-			Cypher:       q.Cypher,
-			KgliteResult: kResult,
-			KgliteDur:    kDur,
-			KgliteErr:    kErr,
-			Neo4jResult:  nResult,
-			Neo4jDur:     nDur,
-			Neo4jErr:     nErr,
-			Match:        kErr == nil && nErr == nil && kNorm == nNorm,
+			QueryName:        q.Name,
+			Cypher:           q.Cypher,
+			KgliteResult:     kResult,
+			KgliteDur:        kDur,
+			KgliteErr:        kErr,
+			Neo4jResult:      nResult,
+			Neo4jDur:         nDur,
+			Neo4jErr:         nErr,
+			Match:            kErr == nil && nErr == nil && kNorm == nNorm,
+			NonDeterministic: nonDeterministic,
 		})
 	}
 	return results
@@ -309,7 +329,7 @@ func truncateStr(s string, max int) string {
 
 func reportComparison(t *testing.T, results []comparisonResult) {
 	t.Helper()
-	var matches, mismatches, errors int
+	var matches, mismatches, errors, nonDeterministic int
 	var totalKglite, totalNeo4j time.Duration
 
 	t.Logf("")
@@ -332,8 +352,15 @@ func reportComparison(t *testing.T, results []comparisonResult) {
 			status = "ERROR"
 			errors++
 		} else if !r.Match {
-			status = "MISMATCH"
-			mismatches++
+			if r.NonDeterministic {
+				// LIMIT without ORDER BY: both backends returned valid but different
+				// subsets; treat as non-deterministic rather than a real mismatch.
+				status = "NONDETERMINISTIC"
+				nonDeterministic++
+			} else {
+				status = "MISMATCH"
+				mismatches++
+			}
 		} else {
 			matches++
 		}
@@ -362,6 +389,10 @@ func reportComparison(t *testing.T, results []comparisonResult) {
 			t.Logf("  DETAIL: kglite=%s", truncateStr(kStr, 200))
 			t.Logf("  DETAIL: neo4j =%s", truncateStr(nStr, 200))
 		}
+		if status == "NONDETERMINISTIC" {
+			t.Logf("  DETAIL (non-det): kglite=%s", truncateStr(kStr, 200))
+			t.Logf("  DETAIL (non-det): neo4j =%s", truncateStr(nStr, 200))
+		}
 	}
 
 	t.Logf("%s", strings.Repeat("-", 140))
@@ -369,12 +400,12 @@ func reportComparison(t *testing.T, results []comparisonResult) {
 	if totalKglite > 0 && totalNeo4j > 0 {
 		totalSpeedup = fmt.Sprintf("%.1fx", float64(totalNeo4j)/float64(totalKglite))
 	}
-	t.Logf("%-40s | %-20s | %-20s | %10s %10s %8s | %d match, %d mismatch, %d error",
+	t.Logf("%-40s | %-20s | %-20s | %10s %10s %8s | %d match, %d mismatch, %d error, %d nondeterministic",
 		fmt.Sprintf("TOTAL (%d queries)", len(results)), "", "",
 		totalKglite.Round(time.Millisecond),
 		totalNeo4j.Round(time.Millisecond),
 		totalSpeedup,
-		matches, mismatches, errors)
+		matches, mismatches, errors, nonDeterministic)
 	t.Logf("")
 }
 

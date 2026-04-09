@@ -213,7 +213,15 @@ func baseIdentityKind(kind graph.Kind) graph.Kind {
 // against nodes already written by IngestNode.
 func endpointIdentityKind(sourceKind graph.Kind, endpointKind graph.Kind) graph.Kind {
 	if endpointKind == graph.EmptyKind {
-		return baseIdentityKind(endpointKind)
+		// When the edge specifies no endpoint kind, fall back to sourceKind if available.
+		// This is the common case for OpenGraph edges whose endpoint objects omit "kind",
+		// e.g. {"start": {"value": "abc123"}}. Using sourceKind ensures the MERGE pattern
+		// matches the same primary label that IngestNode used, preventing duplicate stub
+		// nodes from being created. If sourceKind is also empty, fall back to "Base".
+		if sourceKind != graph.EmptyKind {
+			return sourceKind
+		}
+		return graph.StringKind("Base")
 	}
 	s := endpointKind.String()
 	// AD and Azure kinds use their well-known base labels
