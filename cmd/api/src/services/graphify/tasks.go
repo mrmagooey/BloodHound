@@ -25,6 +25,8 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 	"time"
 
 	"github.com/specterops/bloodhound/cmd/api/src/model"
@@ -42,6 +44,54 @@ import (
 // The datapipe doesn't know or care about tasks, and the graphify service doesn't know or care about jobs.
 // Instead, this func is provided as an abstraction for graphify.
 type UpdateJobFunc func(jobId int64, fileData []IngestFileData)
+
+// ingestFilePriority returns an integer priority for an ingest filename.
+//
+// Files whose base name (without extension) matches a known node-heavy data type
+// receive priority 0 (processed first). Files whose base name matches a known
+// relationship-heavy data type receive priority 1 (processed last). Unknown
+// filenames are assigned priority 2 so that any unrecognised files fall after
+// all well-known types, erring on the side of caution.
+//
+// This ordering maximises the likelihood that both endpoint nodes have been
+// written and flushed before relationships are processed, allowing the kglite
+// batch driver to use the bulk-edge FFI fast path rather than falling back to
+// the slower triple-MERGE Cypher query.
+func ingestFilePriority(name string) int {
+	lower := strings.ToLower(filepath.Base(name))
+	base := strings.TrimSuffix(lower, filepath.Ext(lower))
+	switch base {
+	// Node-heavy types — always process these first so that oidToIdx is
+	// populated before any relationship files are processed.
+	case "users", "computers", "groups", "domains", "ous", "containers", "gpos",
+		"aiacas", "rootcas", "enterprisecas", "ntauthstores", "certtemplates",
+		"issuancepolicies":
+		return 0
+	// Relationship-heavy types — these reference nodes created above, so
+	// processing them after node files maximises FFI fast-path hits.
+	case "sessions", "localgroups":
+		return 1
+	// Azure and opengraph payloads are mixed (nodes + relationships) and are
+	// unknown in size. Assign them an intermediate priority so they land
+	// after pure-node files but before pure-relationship files.
+	case "azure", "opengraph":
+		return 1
+	default:
+		// Unknown filename — process last to avoid accidentally delaying nodes.
+		return 2
+	}
+}
+
+// sortIngestFilesByType sorts a slice of IngestFileData in-place so that
+// node-heavy files are processed before relationship-heavy files.
+//
+// Sorting is stable so that the original archive order is preserved among
+// files that share the same priority bucket.
+func sortIngestFilesByType(files []IngestFileData) {
+	sort.SliceStable(files, func(i, j int) bool {
+		return ingestFilePriority(files[i].Name) < ingestFilePriority(files[j].Name)
+	})
+}
 
 // clearFileTask removes a generic ingest task for ingested data.
 func (s *GraphifyService) clearFileTask(ingestTask model.IngestTask) {
@@ -168,6 +218,14 @@ func (s *GraphifyService) ProcessIngestFile(ic *IngestContext, task model.Ingest
 	if fileData, err := s.extractIngestFiles(task.StoredFileName, task.OriginalFileName, task.FileType); err != nil {
 		return []IngestFileData{}, err
 	} else {
+		// OPT-17: Sort files so node-heavy types are processed before
+		// relationship-heavy types.  This maximises the chance that both
+		// endpoint nodes are already in the kglite oidToIdx cache when a
+		// relationship file is processed, enabling the bulk-edge FFI fast
+		// path in UpdateRelationshipBy and avoiding the slower triple-MERGE
+		// Cypher fallback.
+		sortIngestFilesByType(fileData)
+
 		errs := errorlist.NewBuilder()
 
 		return fileData, s.graphdb.BatchOperation(ic.Ctx, func(batch graph.Batch) error {
