@@ -40,7 +40,11 @@ import (
 )
 
 const (
-	IngestCountThreshold = 500
+	// IngestCountThreshold is the number of JSON objects decoded before a batch
+	// flush is triggered.  With kglite's in-memory graph model large batches
+	// reduce per-flush CGO overhead, so we use 5000 instead of the legacy Neo4j
+	// value of 500 (which was tuned to avoid Neo4j transaction memory pressure).
+	IngestCountThreshold = 5000
 	ReconcileProperty    = "reconcile"
 )
 
