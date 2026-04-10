@@ -130,7 +130,7 @@ func maybeSubmitNodeUpdate(ingestCtx *IngestContext, update graph.NodeUpdate) er
 
 	// Unchanged: enqueue change-- this is needed to maintain reconciliation
 	if ok := ingestCtx.Manager.Submit(ingestCtx.Ctx, change); !ok {
-		slog.WarnContext(ingestCtx.Ctx, "Changelog submit dropped", slog.String("objectid", objectid))
+		slog.DebugContext(ingestCtx.Ctx, "Changelog submit dropped", slog.String("objectid", objectid))
 	}
 
 	return nil

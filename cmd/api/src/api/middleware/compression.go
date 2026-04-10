@@ -106,7 +106,7 @@ func wrapBody(encoding string, body io.ReadCloser) (io.ReadCloser, error) {
 	case "deflate":
 		newBody, err = zlib.NewReader(body)
 	default:
-		slog.Info(fmt.Sprintf("Unsupported encoding detected: %s", encoding))
+		slog.Debug(fmt.Sprintf("Unsupported encoding detected: %s", encoding))
 		err = errUnsupportedEncoding
 	}
 	return newBody, err

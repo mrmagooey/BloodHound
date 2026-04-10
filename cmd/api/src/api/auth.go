@@ -563,7 +563,7 @@ func (s AuthenticatorBase) ValidateBearerToken(ctx context.Context, jwtToken str
 func (s AuthenticatorBase) ValidateSession(ctx context.Context, claimsID string) (auth.Context, error) {
 
 	if sessionID, err := strconv.ParseInt(claimsID, 10, 64); err != nil {
-		slog.InfoContext(
+		slog.DebugContext(
 			ctx,
 			"Sessions ID is invalid",
 			slog.String("claims_id", claimsID),
@@ -571,7 +571,7 @@ func (s AuthenticatorBase) ValidateSession(ctx context.Context, claimsID string)
 		)
 		return auth.Context{}, ErrInvalidAuth
 	} else if session, err := s.db.GetUserSession(ctx, sessionID); err != nil {
-		slog.InfoContext(
+		slog.DebugContext(
 			ctx,
 			"Unable to find session",
 			slog.String("claims_id", claimsID),
@@ -579,7 +579,7 @@ func (s AuthenticatorBase) ValidateSession(ctx context.Context, claimsID string)
 		)
 		return auth.Context{}, ErrInvalidAuth
 	} else if session.Expired() {
-		slog.InfoContext(ctx, "Session is expired", slog.String("claims_id", claimsID))
+		slog.DebugContext(ctx, "Session is expired", slog.String("claims_id", claimsID))
 		return auth.Context{}, ErrInvalidAuth
 	} else {
 		authContext := auth.Context{

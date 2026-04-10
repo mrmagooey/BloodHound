@@ -539,7 +539,7 @@ func (s *GraphQuery) RawCypherQuery(ctx context.Context, validPrimaryKinds graph
 		}
 	)
 
-	slog.InfoContext(
+	slog.DebugContext(
 		ctx,
 		"Preparing user cypher query",
 		slog.String("query", pQuery.StrippedQuery),
@@ -554,7 +554,7 @@ func (s *GraphQuery) RawCypherQuery(ctx context.Context, validPrimaryKinds graph
 		err = s.Graph.ReadTransaction(ctx, txDelegate)
 	}
 
-	slog.InfoContext(
+	slog.DebugContext(
 		ctx,
 		"Executed user cypher query",
 		slog.String("query", pQuery.StrippedQuery),
@@ -993,9 +993,9 @@ func (s *GraphQuery) cacheQueryResult(queryStart time.Time, cacheKey string, res
 		if set, sizeInBytes, err := s.Cache.GuardedSet(cacheKey, result); err != nil {
 			slog.Error(fmt.Sprintf("[Entity Results Cache] Failed to write results to cache for key: %s", cacheKey))
 		} else if !set {
-			slog.Warn(fmt.Sprintf("[Entity Results Cache] Cache entry for query %s not set because it already exists", cacheKey))
+			slog.Debug(fmt.Sprintf("[Entity Results Cache] Cache entry for query %s not set because it already exists", cacheKey))
 		} else {
-			slog.Info(fmt.Sprintf("[Entity Results Cache] Cached slow query %s (%d bytes) because it took %dms", cacheKey, sizeInBytes, queryTime))
+			slog.Debug(fmt.Sprintf("[Entity Results Cache] Cached slow query %s (%d bytes) because it took %dms", cacheKey, sizeInBytes, queryTime))
 		}
 	}
 }

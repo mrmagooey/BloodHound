@@ -970,7 +970,7 @@ func ClearAssetGroupHistoryRecords(ctx context.Context, db database.Database) {
 			attr.Error(err),
 		)
 	} else {
-		slog.InfoContext(
+		slog.DebugContext(
 			ctx,
 			"AGT: ClearAssetGroupHistoryRecords",
 			slog.String("count_deleted", strconv.FormatInt(recordsDeletedCount, 10)),

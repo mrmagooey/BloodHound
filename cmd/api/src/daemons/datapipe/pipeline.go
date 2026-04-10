@@ -261,7 +261,7 @@ func (s *BHCEPipeline) Analyze(ctx context.Context) error {
 			} else if err := s.cache.Reset(); err != nil {
 				slog.ErrorContext(ctx, fmt.Sprintf("Error while resetting the cache: %v", err))
 			} else {
-				slog.InfoContext(
+				slog.DebugContext(
 					ctx,
 					"Cache successfully reset by datapipe daemon",
 					attr.Namespace("analysis"),

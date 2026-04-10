@@ -14,7 +14,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-@import 'colors.scss';
-@import 'general.scss';
-@import 'accordion.scss';
-@import 'print.scss';
+@use 'colors';
+@use 'general';
+@use 'accordion';
+@use 'print';

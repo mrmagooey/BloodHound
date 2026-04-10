@@ -101,7 +101,7 @@ func (s *ingestionCoordinator) runIngestionLoop(ctx context.Context) {
 
 		case <-ticker.C:
 			if len(s.buffer) > 0 {
-				slog.InfoContext(ctx, "Periodic flush")
+				slog.DebugContext(ctx, "Periodic flush")
 				if err := s.flushBuffer(ctx, true); err != nil {
 					slog.WarnContext(ctx, "Periodic flush failed", attr.Error(err))
 				}

@@ -343,7 +343,7 @@ func (s *GraphifyService) ProcessTasks(updateJob UpdateJobFunc) {
 				attr.Error(err),
 			)
 		default:
-			slog.InfoContext(s.ctx,
+			slog.DebugContext(s.ctx,
 				"Ingest task processed",
 				slog.Int64("task_id", task.ID),
 				slog.String("file", task.OriginalFileName),

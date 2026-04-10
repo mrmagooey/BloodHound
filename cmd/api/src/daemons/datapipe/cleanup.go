@@ -79,7 +79,7 @@ func (s *OrphanFileSweeper) Clear(ctx context.Context, expectedFileNames []strin
 	// Release the lock once finished
 	defer s.lock.Unlock()
 
-	slog.InfoContext(ctx, fmt.Sprintf("Running OrphanFileSweeper for path %s", s.tempDirectoryRootPath))
+	slog.DebugContext(ctx, fmt.Sprintf("Running OrphanFileSweeper for path %s", s.tempDirectoryRootPath))
 	slog.DebugContext(ctx, fmt.Sprintf("OrphanFileSweeper expected names %v", expectedFileNames))
 
 	if dirEntries, err := s.fileOps.ReadDir(s.tempDirectoryRootPath); err != nil {
@@ -111,7 +111,7 @@ func (s *OrphanFileSweeper) Clear(ctx context.Context, expectedFileNames []strin
 				break
 			}
 
-			slog.InfoContext(ctx, fmt.Sprintf("Removing orphaned file %s", orphanedDirEntry.Name()))
+			slog.DebugContext(ctx, fmt.Sprintf("Removing orphaned file %s", orphanedDirEntry.Name()))
 			fullPath := filepath.Join(s.tempDirectoryRootPath, orphanedDirEntry.Name())
 
 			if err := s.fileOps.RemoveAll(fullPath); err != nil {
