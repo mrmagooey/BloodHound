@@ -25,13 +25,17 @@ package kglite
 #cgo windows LDFLAGS: -lws2_32 -luserenv -lntdll -lbcrypt
 #include "kglite.h"
 #include <stdlib.h>
+#include <string.h>
 */
 import "C"
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"runtime"
+	"sync"
 	"unsafe"
 )
 
@@ -39,6 +43,40 @@ import (
 // All methods are goroutine-safe (the Rust side uses a Mutex internally).
 type KnowledgeGraph struct {
 	h *C.KgHandle
+}
+
+// bufPool pools bytes.Buffer instances for JSON serialization to avoid
+// repeated heap allocations in hot batch paths.
+var bufPool = sync.Pool{
+	New: func() any { return &bytes.Buffer{} },
+}
+
+// goStringToC converts a Go string to a *C.char without using C.CString (which
+// calls malloc). It appends a NUL terminator to a Go-allocated byte slice and
+// returns a pointer to its data. The pointer is only valid for the duration of
+// the CGO call; the caller must pass the original slice (or the string) to
+// runtime.KeepAlive after the CGO call to prevent premature GC.
+//
+// Usage pattern:
+//
+//	cptr, buf := goStringToC(s)
+//	rc := C.some_fn(cptr)
+//	runtime.KeepAlive(buf)
+func goStringToC(s string) (*C.char, []byte) {
+	buf := make([]byte, len(s)+1)
+	copy(buf, s)
+	buf[len(s)] = 0
+	return (*C.char)(unsafe.Pointer(&buf[0])), buf
+}
+
+// bytesToC converts a byte slice (assumed not to contain embedded NULs) to a
+// *C.char without copying via C malloc. A NUL byte is appended. The caller
+// must runtime.KeepAlive the returned buf after the CGO call.
+func bytesToC(b []byte) (*C.char, []byte) {
+	buf := make([]byte, len(b)+1)
+	copy(buf, b)
+	buf[len(b)] = 0
+	return (*C.char)(unsafe.Pointer(&buf[0])), buf
 }
 
 // New creates a new empty KnowledgeGraph.
@@ -52,10 +90,10 @@ func New() (*KnowledgeGraph, error) {
 
 // Load opens a KnowledgeGraph from a .kgl file.
 func Load(path string) (*KnowledgeGraph, error) {
-	cpath := C.CString(path)
-	defer C.free(unsafe.Pointer(cpath))
-
+	cpath, buf := goStringToC(path)
 	h := C.kg_load(cpath)
+	runtime.KeepAlive(buf)
+
 	if h == nil {
 		return nil, fmt.Errorf("kglite: kg_load: %s", lastError())
 	}
@@ -72,10 +110,11 @@ func (kg *KnowledgeGraph) Free() {
 
 // Save persists the graph to a .kgl file.
 func (kg *KnowledgeGraph) Save(path string) error {
-	cpath := C.CString(path)
-	defer C.free(unsafe.Pointer(cpath))
+	cpath, buf := goStringToC(path)
+	rc := C.kg_save(kg.h, cpath)
+	runtime.KeepAlive(buf)
 
-	if rc := C.kg_save(kg.h, cpath); rc != 0 {
+	if rc != 0 {
 		return fmt.Errorf("kglite: kg_save: %s", lastError())
 	}
 	return nil
@@ -90,29 +129,32 @@ type CypherResult struct {
 // Cypher executes a Cypher query with optional parameters.
 // params may be nil. Returns a CypherResult on success.
 func (kg *KnowledgeGraph) Cypher(query string, params map[string]interface{}) (*CypherResult, error) {
-	cquery := C.CString(query)
-	defer C.free(unsafe.Pointer(cquery))
+	cquery, queryBuf := goStringToC(query)
 
 	var cparams *C.char
+	var paramsBuf []byte
 	if params != nil {
 		b, err := json.Marshal(params)
 		if err != nil {
+			runtime.KeepAlive(queryBuf)
 			return nil, fmt.Errorf("kglite: marshal params: %w", err)
 		}
-		cparams = C.CString(string(b))
-		defer C.free(unsafe.Pointer(cparams))
+		cparams, paramsBuf = bytesToC(b)
 	}
 
 	var out *C.char
 	rc := C.kg_cypher(kg.h, cquery, cparams, &out)
+	runtime.KeepAlive(queryBuf)
+	runtime.KeepAlive(paramsBuf)
+
 	if rc != 0 {
 		return nil, fmt.Errorf("kglite: kg_cypher: %s", lastError())
 	}
 	defer C.kg_free_string(out)
 
-	goJSON := C.GoString(out)
+	goJSON := C.GoBytes(unsafe.Pointer(out), C.int(C.strlen(out)))
 	var result CypherResult
-	if err := json.Unmarshal([]byte(goJSON), &result); err != nil {
+	if err := json.Unmarshal(goJSON, &result); err != nil {
 		return nil, fmt.Errorf("kglite: unmarshal result: %w", err)
 	}
 	return &result, nil
@@ -132,23 +174,29 @@ func (kg *KnowledgeGraph) CypherBatch(queries []BatchQuery) ([]*CypherResult, er
 		return nil, nil
 	}
 
-	b, err := json.Marshal(queries)
-	if err != nil {
+	// Serialize using a pooled buffer to reduce allocations.
+	buf := bufPool.Get().(*bytes.Buffer)
+	buf.Reset()
+	if err := json.NewEncoder(buf).Encode(queries); err != nil {
+		bufPool.Put(buf)
 		return nil, fmt.Errorf("kglite: marshal batch: %w", err)
 	}
-	cjson := C.CString(string(b))
-	defer C.free(unsafe.Pointer(cjson))
+	// json.Encoder.Encode appends a newline; the Rust parser tolerates trailing whitespace.
+	cjson, cjsonBuf := bytesToC(buf.Bytes())
+	bufPool.Put(buf)
 
 	var out *C.char
 	rc := C.kg_cypher_batch(kg.h, cjson, &out)
+	runtime.KeepAlive(cjsonBuf)
+
 	if rc != 0 {
 		return nil, fmt.Errorf("kglite: kg_cypher_batch: %s", lastError())
 	}
 	defer C.kg_free_string(out)
 
-	goJSON := C.GoString(out)
+	goJSON := C.GoBytes(unsafe.Pointer(out), C.int(C.strlen(out)))
 	var rawResults []json.RawMessage
-	if err := json.Unmarshal([]byte(goJSON), &rawResults); err != nil {
+	if err := json.Unmarshal(goJSON, &rawResults); err != nil {
 		return nil, fmt.Errorf("kglite: unmarshal batch result: %w", err)
 	}
 
@@ -161,6 +209,38 @@ func (kg *KnowledgeGraph) CypherBatch(queries []BatchQuery) ([]*CypherResult, er
 		results[i] = &r
 	}
 	return results, nil
+}
+
+// CypherBatchExec executes multiple Cypher queries in a single Mutex lock acquisition,
+// discarding all result rows. It is optimised for mutation-only workloads (MERGE, SET,
+// DELETE, CREATE) where the caller does not need the returned rows.
+//
+// Compared with CypherBatch it avoids the full JSON unmarshal of the result array:
+// it only checks whether the top-level result is a JSON array (no error sentinel) and
+// returns immediately, skipping per-row allocation and parsing.
+func (kg *KnowledgeGraph) CypherBatchExec(queries []BatchQuery) error {
+	if len(queries) == 0 {
+		return nil
+	}
+
+	buf := bufPool.Get().(*bytes.Buffer)
+	buf.Reset()
+	if err := json.NewEncoder(buf).Encode(queries); err != nil {
+		bufPool.Put(buf)
+		return fmt.Errorf("kglite: marshal batch: %w", err)
+	}
+	cjson, cjsonBuf := bytesToC(buf.Bytes())
+	bufPool.Put(buf)
+
+	var out *C.char
+	rc := C.kg_cypher_batch(kg.h, cjson, &out)
+	runtime.KeepAlive(cjsonBuf)
+
+	if rc != 0 {
+		return fmt.Errorf("kglite: kg_cypher_batch: %s", lastError())
+	}
+	C.kg_free_string(out)
+	return nil
 }
 
 // EdgeSpec describes a single edge to create in a bulk operation.
@@ -182,12 +262,14 @@ func (kg *KnowledgeGraph) CreateEdgesBatch(edges []EdgeSpec, skipExisting bool) 
 		return 0, nil
 	}
 
-	b, err := json.Marshal(edges)
-	if err != nil {
+	buf := bufPool.Get().(*bytes.Buffer)
+	buf.Reset()
+	if err := json.NewEncoder(buf).Encode(edges); err != nil {
+		bufPool.Put(buf)
 		return 0, fmt.Errorf("kglite: marshal edges: %w", err)
 	}
-	cjson := C.CString(string(b))
-	defer C.free(unsafe.Pointer(cjson))
+	cjson, cjsonBuf := bytesToC(buf.Bytes())
+	bufPool.Put(buf)
 
 	skipFlag := C.int(0)
 	if skipExisting {
@@ -196,16 +278,18 @@ func (kg *KnowledgeGraph) CreateEdgesBatch(edges []EdgeSpec, skipExisting bool) 
 
 	var out *C.char
 	rc := C.kg_create_edges_batch(kg.h, cjson, skipFlag, &out)
+	runtime.KeepAlive(cjsonBuf)
+
 	if rc != 0 {
 		return 0, fmt.Errorf("kglite: kg_create_edges_batch: %s", lastError())
 	}
 	defer C.kg_free_string(out)
 
-	goJSON := C.GoString(out)
+	goJSON := C.GoBytes(unsafe.Pointer(out), C.int(C.strlen(out)))
 	var result struct {
 		Created int64 `json:"created"`
 	}
-	if err := json.Unmarshal([]byte(goJSON), &result); err != nil {
+	if err := json.Unmarshal(goJSON, &result); err != nil {
 		return 0, fmt.Errorf("kglite: unmarshal edge result: %w", err)
 	}
 	return result.Created, nil

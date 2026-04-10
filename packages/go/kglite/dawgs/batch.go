@@ -27,26 +27,28 @@ import (
 	neo4jquery "github.com/specterops/dawgs/query/neo4j"
 )
 
-const defaultBatchFlushSize = 2000
-const defaultEdgeFlushSize = 5000
+const defaultBatchFlushSize = 5000
+const defaultEdgeFlushSize = 20000
+
+// defaultDeleteFlushSize is the number of relationship IDs to accumulate
+// before issuing a single batched DELETE using an IN clause, reducing
+// per-edge CGO overhead during post-processing.
+const defaultDeleteFlushSize = 500
 
 // Batch implements graph.Batch using kglite with accumulated flush.
 // Operations are buffered and sent to kglite in a single CypherBatch
 // call when the buffer reaches flushSize or when Commit() is called.
 // Edge creation is batched separately using the bulk edge FFI for performance.
-type edgeKey struct {
-	src, dst uint64
-	typ      string
-}
-
 type Batch struct {
-	ctx          context.Context
-	driver       *Driver
-	pending      []kglite.BatchQuery
-	pendingEdges []kglite.EdgeSpec
-	flushSize    int
-	kindsWritten map[string]bool    // tracks objectids that already have __kinds set
-	edgesSeen    map[edgeKey]struct{} // cross-flush dedup: tracks all edges written in this batch lifecycle
+	ctx            context.Context
+	driver         *Driver
+	pending        []kglite.BatchQuery
+	pendingEdges   []kglite.EdgeSpec
+	pendingDeletes []uint64 // relationship IDs pending batched DELETE
+	flushSize      int
+	kindsWritten   map[string]bool   // tracks objectids that already have __kinds set
+	oidToIdx       map[string]uint64 // objectid -> node index cache for bulk edge FFI
+	pendingLookups []string          // objectids awaiting node-index lookup after next Cypher flush
 }
 
 func (b *Batch) WithGraph(_ graph.Graph) graph.Batch {
@@ -57,31 +59,114 @@ func (b *Batch) Commit() error {
 	return b.flush()
 }
 
+// resolvePendingLookups issues a single MATCH query to populate oidToIdx for
+// all objectids in pendingLookups. This is called after the Cypher batch flush
+// so that the nodes are guaranteed to exist before we try to look them up.
+func (b *Batch) resolvePendingLookups() error {
+	if len(b.pendingLookups) == 0 {
+		return nil
+	}
+
+	if b.oidToIdx == nil {
+		b.oidToIdx = make(map[string]uint64, len(b.pendingLookups))
+	}
+
+	// Build a list of objectids to look up (only those not already cached).
+	toFetch := make([]string, 0, len(b.pendingLookups))
+	for _, oid := range b.pendingLookups {
+		if _, cached := b.oidToIdx[oid]; !cached {
+			toFetch = append(toFetch, oid)
+		}
+	}
+	b.pendingLookups = b.pendingLookups[:0]
+
+	if len(toFetch) == 0 {
+		return nil
+	}
+
+	// Convert []string to []interface{} for Cypher parameter encoding.
+	oidList := make([]interface{}, len(toFetch))
+	for i, oid := range toFetch {
+		oidList[i] = oid
+	}
+
+	// Issue a single MATCH query for all objectids at once.
+	start := time.Now()
+	result, err := b.driver.kg.Cypher(
+		"MATCH (n:Base) WHERE n.objectid IN $oids RETURN n.objectid, id(n)",
+		map[string]interface{}{"oids": oidList},
+	)
+	if err != nil {
+		return fmt.Errorf("kglite: resolvePendingLookups: %w", err)
+	}
+
+	for _, row := range result.Rows {
+		if len(row) < 2 {
+			continue
+		}
+		oid, ok := row[0].(string)
+		if !ok {
+			continue
+		}
+		var idx uint64
+		switch v := row[1].(type) {
+		case float64:
+			idx = uint64(v)
+		case int64:
+			idx = uint64(v)
+		case uint64:
+			idx = v
+		default:
+			continue
+		}
+		b.oidToIdx[oid] = idx
+	}
+	if ProfilingEnabled() {
+		recordQuery(fmt.Sprintf("[oid-lookup: %d oids]", len(toFetch)), time.Since(start))
+	}
+	return nil
+}
+
 func (b *Batch) flush() error {
-	// Flush bulk edge creates via direct FFI (no Cypher parsing)
+	// Flush bulk edge creates via direct FFI (no Cypher parsing).
+	// skipExisting=false lets the Rust side handle duplicate suppression,
+	// which is cheaper than maintaining a Go-side cross-flush seen-map.
 	if len(b.pendingEdges) > 0 {
-		b.pendingEdges = b.deduplicateEdges(b.pendingEdges)
-		if len(b.pendingEdges) > 0 {
-			start := time.Now()
-			if _, err := b.driver.kg.CreateEdgesBatch(b.pendingEdges, true); err != nil {
-				return err
-			}
-			if ProfilingEnabled() {
-				recordQuery(fmt.Sprintf("[batch-edges: %d edges]", len(b.pendingEdges)), time.Since(start))
-			}
+		start := time.Now()
+		if _, err := b.driver.kg.CreateEdgesBatch(b.pendingEdges, false); err != nil {
+			return err
+		}
+		if ProfilingEnabled() {
+			recordQuery(fmt.Sprintf("[batch-edges: %d edges]", len(b.pendingEdges)), time.Since(start))
 		}
 		b.pendingEdges = b.pendingEdges[:0]
 	}
-	// Flush remaining Cypher queries
+	// Flush remaining Cypher queries.
+	// Use CypherBatchExec (not CypherBatch) because batch mutations -- MERGE, SET,
+	// DELETE, CREATE -- do not return rows that the caller needs.  Skipping the
+	// full JSON unmarshal of the result array saves one allocation + parse per flush.
 	if len(b.pending) > 0 {
 		start := time.Now()
-		if _, err := b.driver.kg.CypherBatch(b.pending); err != nil {
+		if err := b.driver.kg.CypherBatchExec(b.pending); err != nil {
 			return err
 		}
 		if ProfilingEnabled() {
 			recordQuery(fmt.Sprintf("[batch-cypher: %d queries]", len(b.pending)), time.Since(start))
 		}
 		b.pending = b.pending[:0]
+	}
+	// After the Cypher flush, resolve any pending node-index lookups so that
+	// subsequent UpdateRelationshipBy calls can use the FFI path.
+	if len(b.pendingLookups) > 0 {
+		if err := b.resolvePendingLookups(); err != nil {
+			return err
+		}
+	}
+	// Flush any remaining pending deletes that haven't yet reached the batch threshold.
+	if len(b.pendingDeletes) > 0 {
+		if err := b.flushDeletes(); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -91,36 +176,6 @@ func (b *Batch) maybeFlush() error {
 		return b.flush()
 	}
 	return nil
-}
-
-// deduplicateEdges removes duplicate (src, dst, type) triples within this batch
-// and across previous flushes, keeping the last occurrence for within-batch dupes.
-func (b *Batch) deduplicateEdges(edges []kglite.EdgeSpec) []kglite.EdgeSpec {
-	if b.edgesSeen == nil {
-		b.edgesSeen = make(map[edgeKey]struct{}, len(edges))
-	}
-	// First pass: deduplicate within this batch (keep last occurrence)
-	localSeen := make(map[edgeKey]int, len(edges))
-	deduped := make([]kglite.EdgeSpec, 0, len(edges))
-	for _, e := range edges {
-		k := edgeKey{e.Src, e.Dst, e.Type}
-		if idx, ok := localSeen[k]; ok {
-			deduped[idx] = e
-		} else {
-			localSeen[k] = len(deduped)
-			deduped = append(deduped, e)
-		}
-	}
-	// Second pass: filter out edges already flushed in previous batches
-	result := deduped[:0]
-	for _, e := range deduped {
-		k := edgeKey{e.Src, e.Dst, e.Type}
-		if _, seen := b.edgesSeen[k]; !seen {
-			b.edgesSeen[k] = struct{}{}
-			result = append(result, e)
-		}
-	}
-	return result
 }
 
 func (b *Batch) enqueue(cypher string, params map[string]any) error {
@@ -218,15 +273,54 @@ func (b *Batch) CreateRelationshipByIDs(startNodeID, endNodeID graph.ID, kind gr
 	return b.maybeFlush()
 }
 
-// DeleteRelationship deletes a relationship by ID.
+// DeleteRelationship enqueues a relationship ID for batched deletion.
+// IDs are accumulated in pendingDeletes; when the buffer reaches
+// defaultDeleteFlushSize a single IN-clause DELETE is issued, reducing
+// CGO round-trips during bulk post-processing (e.g. DeleteTransitEdges).
 func (b *Batch) DeleteRelationship(id graph.ID) error {
-	return b.enqueue(
-		"MATCH ()-[r]->() WHERE id(r) = $id DELETE r",
-		map[string]any{"id": uint64(id)},
-	)
+	b.pendingDeletes = append(b.pendingDeletes, uint64(id))
+	if len(b.pendingDeletes) >= defaultDeleteFlushSize {
+		return b.flushDeletes()
+	}
+	return nil
+}
+
+// flushDeletes issues a single batched DELETE for all accumulated relationship
+// IDs using an IN clause, then resets the pendingDeletes slice.
+func (b *Batch) flushDeletes() error {
+	if len(b.pendingDeletes) == 0 {
+		return nil
+	}
+
+	// Build an inline list of integer literals: [id1, id2, ...]
+	// We inline the IDs rather than using a parameter because kglite's Cypher
+	// engine may not support list parameters in an IN predicate.
+	var sb strings.Builder
+	sb.WriteString("MATCH ()-[r]->() WHERE id(r) IN [")
+	for i, id := range b.pendingDeletes {
+		if i > 0 {
+			sb.WriteByte(',')
+		}
+		fmt.Fprintf(&sb, "%d", id)
+	}
+	sb.WriteString("] DELETE r")
+
+	start := time.Now()
+	if err := b.driver.kg.CypherBatchExec([]kglite.BatchQuery{{Query: sb.String()}}); err != nil {
+		return fmt.Errorf("kglite: flushDeletes: %w", err)
+	}
+	if ProfilingEnabled() {
+		recordQuery(fmt.Sprintf("[batch-deletes: %d ids]", len(b.pendingDeletes)), time.Since(start))
+	}
+
+	b.pendingDeletes = b.pendingDeletes[:0]
+	return nil
 }
 
 // UpdateNodeBy performs an upsert of a node identified by identity kind and properties.
+// If the identity property is "objectid", the node's index is scheduled for lookup after
+// the next Cypher flush so that subsequent UpdateRelationshipBy calls can use the fast
+// bulk edge FFI path instead of a full Cypher MERGE per relationship.
 func (b *Batch) UpdateNodeBy(update graph.NodeUpdate) error {
 	if update.Node == nil || len(update.Node.Kinds) == 0 {
 		return fmt.Errorf("kglite: UpdateNodeBy: node must have at least one kind")
@@ -297,10 +391,120 @@ func (b *Batch) UpdateNodeBy(update graph.NodeUpdate) error {
 		cypher = fmt.Sprintf("MERGE (n:%s %s) SET %s", quoteIdent(kindStr), identityPattern, setFrag)
 	}
 
+	// Schedule a node-index lookup for this objectid so that subsequent
+	// UpdateRelationshipBy calls can use the bulk FFI path. The lookup is
+	// deferred until after the Cypher flush so the node is guaranteed to exist.
+	if objID, ok := identityMap["objectid"]; ok {
+		if oid, ok := objID.(string); ok && oid != "" {
+			b.pendingLookups = append(b.pendingLookups, oid)
+		}
+	}
+
 	return b.enqueue(cypher, mergeParams(identityParams, propParams))
 }
 
+// updateRelationshipByFFI handles the fast path for UpdateRelationshipBy when both
+// endpoint node indices are known. It still applies node property updates and extra
+// labels via Cypher MERGE stubs, but the relationship itself is created via the bulk
+// edge FFI (pendingEdges) instead of a triple-MERGE Cypher query.
+func (b *Batch) updateRelationshipByFFI(
+	update graph.RelationshipUpdate,
+	relKindStr string,
+	startIdx, endIdx uint64,
+	startKindStr, endKindStr string,
+	startIdentity, endIdentity map[string]any,
+	startProps, endProps map[string]any,
+	relProps map[string]any,
+) error {
+	startPattern, startIdParams := propsPattern("si_", startIdentity)
+	endPattern, endIdParams := propsPattern("ei_", endIdentity)
+
+	startSetFrag, startPropParams := setClause("s", "sp_", startProps)
+	endSetFrag, endPropParams := setClause("e", "ep_", endProps)
+
+	// Build extra-label SET parts for start node.
+	startSetParts := []string{}
+	if startSetFrag != "" {
+		startSetParts = append(startSetParts, startSetFrag)
+	}
+	for _, k := range update.Start.Kinds {
+		if k == graph.EmptyKind {
+			continue
+		}
+		kindLabelStr := k.String()
+		if kindLabelStr == "" {
+			continue
+		}
+		if update.StartIdentityKind != nil && kindLabelStr == update.StartIdentityKind.String() {
+			continue
+		}
+		startSetParts = append(startSetParts, fmt.Sprintf("s:%s", quoteIdent(kindLabelStr)))
+	}
+
+	// Emit start node MERGE (with optional SET).
+	startCypher := fmt.Sprintf("MERGE (s%s %s)", startKindStr, startPattern)
+	if len(startSetParts) > 0 {
+		startCypher += " SET " + strings.Join(startSetParts, ", ")
+	}
+	if err := b.enqueue(startCypher, mergeParams(startIdParams, startPropParams)); err != nil {
+		return err
+	}
+
+	// Build extra-label SET parts for end node.
+	endSetParts := []string{}
+	if endSetFrag != "" {
+		endSetParts = append(endSetParts, endSetFrag)
+	}
+	for _, k := range update.End.Kinds {
+		if k == graph.EmptyKind {
+			continue
+		}
+		kindLabelStr := k.String()
+		if kindLabelStr == "" {
+			continue
+		}
+		if update.EndIdentityKind != nil && kindLabelStr == update.EndIdentityKind.String() {
+			continue
+		}
+		endSetParts = append(endSetParts, fmt.Sprintf("e:%s", quoteIdent(kindLabelStr)))
+	}
+
+	// Emit end node MERGE (with optional SET).
+	endCypher := fmt.Sprintf("MERGE (e%s %s)", endKindStr, endPattern)
+	if len(endSetParts) > 0 {
+		endCypher += " SET " + strings.Join(endSetParts, ", ")
+	}
+	if err := b.enqueue(endCypher, mergeParams(endIdParams, endPropParams)); err != nil {
+		return err
+	}
+
+	// Enqueue the relationship via the bulk edge FFI -- no Cypher parsing required.
+	var propsMap map[string]any
+	if len(relProps) > 0 {
+		propsMap = make(map[string]any, len(relProps))
+		for k, v := range relProps {
+			propsMap[k] = scalarize(v)
+		}
+	}
+	b.pendingEdges = append(b.pendingEdges, kglite.EdgeSpec{
+		Src:   startIdx,
+		Dst:   endIdx,
+		Type:  relKindStr,
+		Props: propsMap,
+	})
+	return b.maybeFlush()
+}
+
 // UpdateRelationshipBy performs an upsert of a relationship identified by start/end/kind/properties.
+//
+// Fast path: if both endpoint node indices are already in the oidToIdx cache (populated
+// by prior UpdateNodeBy calls followed by a flush), the relationship is created via the
+// bulk edge FFI (pendingEdges -> CreateEdgesBatch) which bypasses Cypher parsing entirely.
+// Node stub MERGEs are still issued via Cypher so that property updates and extra labels
+// are applied correctly.
+//
+// Slow path: if either endpoint index is unknown, the original triple-MERGE Cypher query
+// is used (MERGE start, MERGE end, MERGE relationship in one statement).
 func (b *Batch) UpdateRelationshipBy(update graph.RelationshipUpdate) error {
 	if update.Relationship == nil {
 		return fmt.Errorf("kglite: UpdateRelationshipBy: relationship is nil")
@@ -398,6 +602,29 @@ func (b *Batch) UpdateRelationshipBy(update graph.RelationshipUpdate) error {
 		}
 	}
 
+	// -- Fast path: both endpoint indices are cached ----------------------------
+	// If both endpoint objectids are in the oidToIdx cache, we can use the bulk
+	// edge FFI to create the relationship without a triple-MERGE Cypher query.
+	if b.oidToIdx != nil {
+		startOid, startHasOid := startIdentity["objectid"].(string)
+		endOid, endHasOid := endIdentity["objectid"].(string)
+		if startHasOid && endHasOid && startOid != "" && endOid != "" {
+			startIdx, startCached := b.oidToIdx[startOid]
+			endIdx, endCached := b.oidToIdx[endOid]
+			if startCached && endCached {
+				return b.updateRelationshipByFFI(
+					update, relKindStr,
+					startIdx, endIdx,
+					startKindStr, endKindStr,
+					startIdentity, endIdentity,
+					startProps, endProps,
+					relProps,
+				)
+			}
+		}
+	}
+
+	// -- Slow path: fall back to the original triple-MERGE Cypher query ---------
 	startPattern, startIdParams := propsPattern("si_", startIdentity)
 	endPattern, endIdParams := propsPattern("ei_", endIdentity)
 	relPattern, relParams := propsPattern("rp_", relProps)
@@ -418,14 +645,7 @@ func (b *Batch) UpdateRelationshipBy(update graph.RelationshipUpdate) error {
 		setParts = append(setParts, endSetFrag)
 	}
 
-	// Add extra labels for endpoint stubs — mirrors Neo4j's "SET s:Kind1, s:Kind2" behaviour.
-	// When a relationship endpoint references a node by a different identity kind than its
-	// declared kind (e.g., a "User" endpoint matched by "Base"), the stub node must also
-	// receive its declared kind as an extra label so that label-filtered queries (e.g.
-	// MATCH (n:User)) can find it. Without this, stub nodes are stranded under their
-	// identity kind only (e.g. "Base") and are invisible to label-specific queries.
-	// The identity kind (first kind in the list, used in the MERGE pattern) is already the
-	// primary label of the node; extra kinds are secondary labels added here.
+	// Add extra labels for endpoint stubs.
 	for _, k := range update.Start.Kinds {
 		if k == graph.EmptyKind {
 			continue
@@ -434,7 +654,6 @@ func (b *Batch) UpdateRelationshipBy(update graph.RelationshipUpdate) error {
 		if kindLabelStr == "" {
 			continue
 		}
-		// Skip the identity kind — it is already the primary label from the MERGE pattern
 		if update.StartIdentityKind != nil && kindLabelStr == update.StartIdentityKind.String() {
 			continue
 		}
@@ -448,7 +667,6 @@ func (b *Batch) UpdateRelationshipBy(update graph.RelationshipUpdate) error {
 		if kindLabelStr == "" {
 			continue
 		}
-		// Skip the identity kind — it is already the primary label from the MERGE pattern
 		if update.EndIdentityKind != nil && kindLabelStr == update.EndIdentityKind.String() {
 			continue
 		}

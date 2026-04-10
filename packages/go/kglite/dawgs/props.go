@@ -21,7 +21,29 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"sync"
 )
+
+// sanitizeKeyCache caches sanitized property key names. Property key names in
+// BloodHound are highly repetitive (objectid, name, enabled, lastseen, etc.)
+// so a package-level cache eliminates repeated strings.Builder allocations
+// after the first occurrence of each key. sync.Map is used for safe concurrent
+// access from parallel batch goroutines.
+var sanitizeKeyCache sync.Map // map[string]string
+
+// builderPool recycles strings.Builder instances used by sanitizeKey to avoid
+// allocating a new builder on every cache-miss call.
+var builderPool = sync.Pool{
+	New: func() any { return new(strings.Builder) },
+}
+
+// stringsPool recycles []string slices used by propsPattern and setClause for
+// sorted key and fragment accumulation. Slices are returned to the pool after
+// use (truncated to zero length) so subsequent calls can reuse the backing
+// array without allocating.
+var stringsPool = sync.Pool{
+	New: func() any { s := make([]string, 0, 16); return &s },
+}
 
 // propsPattern expands a property map into an inline Cypher property pattern
 // string (e.g. `{name: $p_name, objectid: $p_objectid}`) and a flat param map
@@ -37,14 +59,21 @@ func propsPattern(prefix string, props map[string]any) (string, map[string]any) 
 		return "", map[string]any{}
 	}
 
-	params := make(map[string]any, len(props))
-	keys := make([]string, 0, len(props))
+	// Borrow a slice for key collection from the pool.
+	keysPtr := stringsPool.Get().(*[]string)
+	keys := (*keysPtr)[:0]
+
 	for k := range props {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
 
-	parts := make([]string, 0, len(keys))
+	params := make(map[string]any, len(props))
+
+	// Borrow a slice for Cypher fragment accumulation.
+	partsPtr := stringsPool.Get().(*[]string)
+	parts := (*partsPtr)[:0]
+
 	for _, k := range keys {
 		v := props[k]
 		paramKey := prefix + sanitizeKey(k)
@@ -52,7 +81,15 @@ func propsPattern(prefix string, props map[string]any) (string, map[string]any) 
 		parts = append(parts, fmt.Sprintf("%s: $%s", k, paramKey))
 	}
 
-	return "{" + strings.Join(parts, ", ") + "}", params
+	result := "{" + strings.Join(parts, ", ") + "}"
+
+	// Return slices to pool (truncated, backing array reused).
+	*keysPtr = keys[:0]
+	stringsPool.Put(keysPtr)
+	*partsPtr = parts[:0]
+	stringsPool.Put(partsPtr)
+
+	return result, params
 }
 
 // setClause builds a `SET var.key = $param, ...` fragment (without the SET
@@ -63,14 +100,21 @@ func setClause(varName, prefix string, props map[string]any) (string, map[string
 		return "", map[string]any{}
 	}
 
-	params := make(map[string]any, len(props))
-	keys := make([]string, 0, len(props))
+	// Borrow a slice for key collection from the pool.
+	keysPtr := stringsPool.Get().(*[]string)
+	keys := (*keysPtr)[:0]
+
 	for k := range props {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
 
-	parts := make([]string, 0, len(keys))
+	params := make(map[string]any, len(props))
+
+	// Borrow a slice for SET fragment accumulation.
+	partsPtr := stringsPool.Get().(*[]string)
+	parts := (*partsPtr)[:0]
+
 	for _, k := range keys {
 		// Skip "id" — kglite uses it as the immutable node identity. Source data
 		// that includes "id" in properties (e.g. GitHound SCIM exports) is always
@@ -84,12 +128,28 @@ func setClause(varName, prefix string, props map[string]any) (string, map[string
 		parts = append(parts, fmt.Sprintf("%s.%s = $%s", varName, k, paramKey))
 	}
 
-	return strings.Join(parts, ", "), params
+	var result string
+	if len(parts) > 0 {
+		result = strings.Join(parts, ", ")
+	}
+
+	// Return slices to pool.
+	*keysPtr = keys[:0]
+	stringsPool.Put(keysPtr)
+	*partsPtr = parts[:0]
+	stringsPool.Put(partsPtr)
+
+	return result, params
 }
 
 // mergeParams merges multiple param maps into one. Later maps win on collision.
 func mergeParams(maps ...map[string]any) map[string]any {
-	out := make(map[string]any)
+	// Compute total size to avoid rehashing.
+	total := 0
+	for _, m := range maps {
+		total += len(m)
+	}
+	out := make(map[string]any, total)
 	for _, m := range maps {
 		for k, v := range m {
 			out[k] = v
@@ -106,8 +166,20 @@ func quoteIdent(s string) string {
 
 // sanitizeKey replaces characters that are not valid in a Cypher identifier
 // with underscores (kglite param names must be simple identifiers).
+//
+// Results are cached in sanitizeKeyCache so that repeated calls for the same
+// property name (e.g. "objectid", "name", "enabled") incur only a sync.Map
+// lookup instead of a full strings.Builder allocation + scan.
 func sanitizeKey(k string) string {
-	var b strings.Builder
+	// Fast path: return cached result if available.
+	if v, ok := sanitizeKeyCache.Load(k); ok {
+		return v.(string)
+	}
+
+	// Slow path: compute and cache.
+	b := builderPool.Get().(*strings.Builder)
+	b.Reset()
+	b.Grow(len(k))
 	for _, r := range k {
 		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_' {
 			b.WriteRune(r)
@@ -115,7 +187,11 @@ func sanitizeKey(k string) string {
 			b.WriteRune('_')
 		}
 	}
-	return b.String()
+	result := b.String()
+	builderPool.Put(b)
+
+	sanitizeKeyCache.Store(k, result)
+	return result
 }
 
 // scalarize converts a value to one of the scalar types kglite accepts as

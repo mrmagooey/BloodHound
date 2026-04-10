@@ -28,6 +28,32 @@ import (
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+// fetchAllRelationshipIDs returns the real edge IDs from the graph using raw
+// kglite Cypher. This is needed because transaction.CreateRelationshipByIDs
+// always returns id=0; the actual IDs must be queried back from the engine.
+func fetchAllRelationshipIDs(t *testing.T, db *Driver) []graph.ID {
+	t.Helper()
+	result, err := db.kg.Cypher("MATCH ()-[r]->() RETURN id(r)", nil)
+	if err != nil {
+		t.Fatalf("fetchAllRelationshipIDs: %v", err)
+	}
+	ids := make([]graph.ID, 0, len(result.Rows))
+	for _, row := range result.Rows {
+		if len(row) == 0 {
+			continue
+		}
+		switch v := row[0].(type) {
+		case float64:
+			ids = append(ids, graph.ID(uint64(v)))
+		case int64:
+			ids = append(ids, graph.ID(v))
+		case uint64:
+			ids = append(ids, graph.ID(v))
+		}
+	}
+	return ids
+}
+
 // countNodes returns the total node count via ReadTransaction.
 func countNodes(t *testing.T, db *Driver) int64 {
 	t.Helper()
@@ -306,6 +332,193 @@ func TestBatchDeleteRelationship(t *testing.T) {
 	count := countRelationships(t, db)
 	if count != 0 {
 		t.Errorf("expected 0 relationships after delete, got %d", count)
+	}
+}
+
+// TestBatchDeleteRelationshipSingle verifies that a single DeleteRelationship
+// call (below the flush threshold) is still flushed on Commit.
+func TestBatchDeleteRelationshipSingle(t *testing.T) {
+	db := openTestDriver(t)
+	n1 := createTestNode(t, db, testNodeKind, map[string]any{})
+	n2 := createTestNode(t, db, testNodeKind, map[string]any{})
+
+	// Create the edge
+	err := db.WriteTransaction(context.Background(), func(tx graph.Transaction) error {
+		_, err := tx.CreateRelationshipByIDs(n1.ID, n2.ID, testEdgeKind, nil)
+		return err
+	})
+	if err != nil {
+		t.Fatalf("CreateRelationshipByIDs: %v", err)
+	}
+
+	// Fetch real IDs (CreateRelationshipByIDs always returns id=0).
+	relIDs := fetchAllRelationshipIDs(t, db)
+	if len(relIDs) != 1 {
+		t.Fatalf("expected 1 relationship, got %d", len(relIDs))
+	}
+
+	// One delete — below threshold, must flush on Commit.
+	err = db.BatchOperation(context.Background(), func(batch graph.Batch) error {
+		return batch.DeleteRelationship(relIDs[0])
+	})
+	if err != nil {
+		t.Fatalf("BatchOperation DeleteRelationship (single): %v", err)
+	}
+
+	count := countRelationships(t, db)
+	if count != 0 {
+		t.Errorf("expected 0 relationships after single delete, got %d", count)
+	}
+}
+
+// createTestRelationships creates n relationships between src and dst using
+// distinct edge types and returns their real IDs (fetched via raw Cypher).
+func createTestRelationships(t *testing.T, db *Driver, src, dst *graph.Node, n int, prefix string) []graph.ID {
+	t.Helper()
+	for i := 0; i < n; i++ {
+		kind := graph.StringKind(fmt.Sprintf("%s%d", prefix, i))
+		err := db.WriteTransaction(context.Background(), func(tx graph.Transaction) error {
+			_, err := tx.CreateRelationshipByIDs(src.ID, dst.ID, kind, nil)
+			return err
+		})
+		if err != nil {
+			t.Fatalf("createTestRelationships[%d]: %v", i, err)
+		}
+	}
+	ids := fetchAllRelationshipIDs(t, db)
+	if len(ids) != n {
+		t.Fatalf("createTestRelationships: expected %d IDs, got %d", n, len(ids))
+	}
+	return ids
+}
+
+// TestBatchDeleteRelationshipBatchFlush verifies that when more than
+// defaultDeleteFlushSize relationships are deleted the batch auto-flushes
+// mid-operation and all relationships are removed.
+func TestBatchDeleteRelationshipBatchFlush(t *testing.T) {
+	const total = defaultDeleteFlushSize + 10 // just over the threshold
+
+	db := openTestDriver(t)
+	src := createTestNode(t, db, testNodeKind, map[string]any{})
+	dst := createTestNode(t, db, testNodeKind, map[string]any{})
+
+	relIDs := createTestRelationships(t, db, src, dst, total, "DelBatchEdge")
+
+	if got := countRelationships(t, db); int(got) != total {
+		t.Fatalf("setup: expected %d relationships, got %d", total, got)
+	}
+
+	// Delete all relationships in a single BatchOperation.
+	err := db.BatchOperation(context.Background(), func(batch graph.Batch) error {
+		for _, id := range relIDs {
+			if err := batch.DeleteRelationship(id); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("BatchOperation DeleteRelationship (batch): %v", err)
+	}
+
+	count := countRelationships(t, db)
+	if count != 0 {
+		t.Errorf("expected 0 relationships after batch delete, got %d", count)
+	}
+}
+
+// TestBatchDeleteRelationshipExactlyAtThreshold verifies correct behaviour when
+// exactly defaultDeleteFlushSize relationships are deleted (i.e. the flush fires
+// on the last element and no remainder is left for Commit to drain).
+func TestBatchDeleteRelationshipExactlyAtThreshold(t *testing.T) {
+	const total = defaultDeleteFlushSize
+
+	db := openTestDriver(t)
+	src := createTestNode(t, db, testNodeKind, map[string]any{})
+	dst := createTestNode(t, db, testNodeKind, map[string]any{})
+
+	relIDs := createTestRelationships(t, db, src, dst, total, "DelExactEdge")
+
+	err := db.BatchOperation(context.Background(), func(batch graph.Batch) error {
+		for _, id := range relIDs {
+			if err := batch.DeleteRelationship(id); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("BatchOperation DeleteRelationship (exact threshold): %v", err)
+	}
+
+	count := countRelationships(t, db)
+	if count != 0 {
+		t.Errorf("expected 0 relationships after exact-threshold delete, got %d", count)
+	}
+}
+
+// TestBatchDeleteRelationshipEmpty verifies that calling flush with no pending
+// deletes is a no-op and does not error.
+func TestBatchDeleteRelationshipEmpty(t *testing.T) {
+	db := openTestDriver(t)
+
+	err := db.BatchOperation(context.Background(), func(batch graph.Batch) error {
+		// No deletes at all — Commit should not error.
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("BatchOperation with zero deletes: %v", err)
+	}
+}
+
+// TestBatchDeleteRelationshipNonExistent verifies that deleting a relationship
+// that does not exist does not return an error.
+func TestBatchDeleteRelationshipNonExistent(t *testing.T) {
+	db := openTestDriver(t)
+
+	err := db.BatchOperation(context.Background(), func(batch graph.Batch) error {
+		return batch.DeleteRelationship(graph.ID(99999))
+	})
+	if err != nil {
+		t.Fatalf("DeleteRelationship on non-existent ID should not error: %v", err)
+	}
+}
+
+// TestBatchDeleteRelationshipFlushedOnCommit verifies that deletes below the
+// threshold are still committed when Commit() is called explicitly mid-batch.
+func TestBatchDeleteRelationshipFlushedOnCommit(t *testing.T) {
+	db := openTestDriver(t)
+	n1 := createTestNode(t, db, testNodeKind, map[string]any{})
+	n2 := createTestNode(t, db, testNodeKind, map[string]any{})
+
+	err := db.WriteTransaction(context.Background(), func(tx graph.Transaction) error {
+		_, err := tx.CreateRelationshipByIDs(n1.ID, n2.ID, testEdgeKind, nil)
+		return err
+	})
+	if err != nil {
+		t.Fatalf("CreateRelationshipByIDs: %v", err)
+	}
+
+	// Fetch the real relationship ID.
+	relIDs := fetchAllRelationshipIDs(t, db)
+	if len(relIDs) != 1 {
+		t.Fatalf("expected 1 relationship, got %d", len(relIDs))
+	}
+
+	err = db.BatchOperation(context.Background(), func(batch graph.Batch) error {
+		if err := batch.DeleteRelationship(relIDs[0]); err != nil {
+			return err
+		}
+		// Explicit mid-batch commit should flush the pending delete.
+		return batch.Commit()
+	})
+	if err != nil {
+		t.Fatalf("BatchOperation with explicit Commit: %v", err)
+	}
+
+	count := countRelationships(t, db)
+	if count != 0 {
+		t.Errorf("expected 0 relationships after explicit Commit, got %d", count)
 	}
 }
 

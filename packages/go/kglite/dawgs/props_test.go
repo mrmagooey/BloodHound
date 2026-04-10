@@ -19,6 +19,7 @@ package dawgs
 import (
 	"sort"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -498,4 +499,101 @@ func TestPropsAndSetClauseIntegration(t *testing.T) {
 	if allParams["p_enabled"] != true {
 		t.Errorf("expected p_enabled=true, got %v", allParams["p_enabled"])
 	}
+}
+
+// ─── OPT-18: concurrency and pool correctness ─────────────────────────────────
+
+// TestSanitizeKeyConcurrent verifies that the sanitizeKey sync.Map cache is
+// race-free under concurrent access. Run with -race to catch data races.
+func TestSanitizeKeyConcurrent(t *testing.T) {
+	t.Parallel()
+	keys := []string{"objectid", "name", "enabled", "some.key", "hyphen-key", "MixedCase_123"}
+	expected := []string{"objectid", "name", "enabled", "some_key", "hyphen_key", "MixedCase_123"}
+
+	var wg sync.WaitGroup
+	for i := 0; i < 8; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for j := 0; j < 500; j++ {
+				idx := j % len(keys)
+				got := sanitizeKey(keys[idx])
+				if got != expected[idx] {
+					t.Errorf("concurrent sanitizeKey(%q) = %q, want %q", keys[idx], got, expected[idx])
+				}
+			}
+		}()
+	}
+	wg.Wait()
+}
+
+// TestPropsPatternPoolCorrectness verifies that pool-recycled slices do not
+// cause data corruption when propsPattern is called repeatedly in sequence.
+func TestPropsPatternPoolCorrectness(t *testing.T) {
+	t.Parallel()
+	props := map[string]any{"objectid": "S-1-2-3", "name": "Alice", "enabled": true}
+	wantPattern := "{enabled: $p_enabled, name: $p_name, objectid: $p_objectid}"
+
+	// Call many times to stress-test pool reuse.
+	for i := 0; i < 200; i++ {
+		pat, params := propsPattern("p_", props)
+		if pat != wantPattern {
+			t.Fatalf("iteration %d: got %q, want %q", i, pat, wantPattern)
+		}
+		if params["p_objectid"] != "S-1-2-3" {
+			t.Fatalf("iteration %d: params[p_objectid] = %v", i, params["p_objectid"])
+		}
+		if params["p_name"] != "Alice" {
+			t.Fatalf("iteration %d: params[p_name] = %v", i, params["p_name"])
+		}
+		if params["p_enabled"] != true {
+			t.Fatalf("iteration %d: params[p_enabled] = %v", i, params["p_enabled"])
+		}
+	}
+}
+
+// TestSetClausePoolCorrectness verifies pool reuse correctness in setClause.
+func TestSetClausePoolCorrectness(t *testing.T) {
+	t.Parallel()
+	props := map[string]any{"name": "Bob", "score": int64(42)}
+	wantFrag := "n.name = $p_name, n.score = $p_score"
+
+	for i := 0; i < 200; i++ {
+		frag, params := setClause("n", "p_", props)
+		if frag != wantFrag {
+			t.Fatalf("iteration %d: got %q, want %q", i, frag, wantFrag)
+		}
+		if params["p_name"] != "Bob" {
+			t.Fatalf("iteration %d: params[p_name] = %v", i, params["p_name"])
+		}
+		if params["p_score"] != int64(42) {
+			t.Fatalf("iteration %d: params[p_score] = %v", i, params["p_score"])
+		}
+	}
+}
+
+// TestPropsPatternConcurrentPoolCorrectness ensures that concurrent goroutines
+// sharing the stringsPool each receive correct, independent results.
+func TestPropsPatternConcurrentPoolCorrectness(t *testing.T) {
+	t.Parallel()
+	props := map[string]any{"objectid": "S-1-2-3", "name": "Alice", "enabled": true}
+	wantPattern := "{enabled: $p_enabled, name: $p_name, objectid: $p_objectid}"
+
+	var wg sync.WaitGroup
+	for i := 0; i < 8; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for j := 0; j < 500; j++ {
+				pat, params := propsPattern("p_", props)
+				if pat != wantPattern {
+					t.Errorf("concurrent got %q, want %q", pat, wantPattern)
+				}
+				if params["p_objectid"] != "S-1-2-3" {
+					t.Errorf("concurrent params[p_objectid] = %v", params["p_objectid"])
+				}
+			}
+		}()
+	}
+	wg.Wait()
 }
