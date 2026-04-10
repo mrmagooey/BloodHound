@@ -22,6 +22,10 @@ import (
 	"time"
 )
 
+// NOTE: These tests mutate the package-level globalProfiler variable.
+// Do NOT add t.Parallel() to any test in this file — concurrent tests
+// would race on the shared profiler state.
+
 // helper to ensure profiling is cleaned up after each test
 func withProfiling(t *testing.T, fn func()) {
 	t.Helper()

@@ -4,7 +4,6 @@ package e2e_test
 
 import (
 	"context"
-	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -90,16 +89,10 @@ var combinedExpectedCounts = map[string]int64{
 	"AZOwns relationships":        2850,
 }
 
-// TestADIngestAssertions loads AD sample data, runs analysis, and asserts exact query results.
+// TestADIngestAssertions uses the shared pre-loaded AD graph and asserts exact query results.
 func TestADIngestAssertions(t *testing.T) {
 	ctx := context.Background()
-	adZip := filepath.Join(testdataDir(), "ad_sampledata.zip")
-	skipIfMissing(t, adZip)
-
-	db := openGraph(t)
-	schema := loadIngestSchema(t)
-	ingestZip(ctx, t, db, adZip, schema)
-	runAnalysis(ctx, t, db)
+	db := sharedADGraph(t)
 
 	for _, q := range adPresetQueries {
 		expected, ok := adExpectedCounts[q.Name]
@@ -114,16 +107,10 @@ func TestADIngestAssertions(t *testing.T) {
 	}
 }
 
-// TestAzureIngestAssertions loads Azure sample data, runs analysis, and asserts exact query results.
+// TestAzureIngestAssertions uses the shared pre-loaded Azure graph and asserts exact query results.
 func TestAzureIngestAssertions(t *testing.T) {
 	ctx := context.Background()
-	azureZip := filepath.Join(testdataDir(), "entra_sampledata.zip")
-	skipIfMissing(t, azureZip)
-
-	db := openGraph(t)
-	schema := loadIngestSchema(t)
-	ingestZip(ctx, t, db, azureZip, schema)
-	runAnalysis(ctx, t, db)
+	db := sharedAzureGraph(t)
 
 	for _, q := range azurePresetQueries {
 		expected, ok := azureExpectedCounts[q.Name]
@@ -138,19 +125,10 @@ func TestAzureIngestAssertions(t *testing.T) {
 	}
 }
 
-// TestCombinedIngestAssertions loads both datasets, runs analysis, and asserts all query results.
+// TestCombinedIngestAssertions uses the shared pre-loaded combined graph and asserts all query results.
 func TestCombinedIngestAssertions(t *testing.T) {
 	ctx := context.Background()
-	adZip := filepath.Join(testdataDir(), "ad_sampledata.zip")
-	azureZip := filepath.Join(testdataDir(), "entra_sampledata.zip")
-	skipIfMissing(t, adZip)
-	skipIfMissing(t, azureZip)
-
-	db := openGraph(t)
-	schema := loadIngestSchema(t)
-	ingestZip(ctx, t, db, adZip, schema)
-	ingestZip(ctx, t, db, azureZip, schema)
-	runAnalysis(ctx, t, db)
+	db := sharedCombinedGraph(t)
 
 	allQueries := append(adPresetQueries, azurePresetQueries...)
 	for _, q := range allQueries {

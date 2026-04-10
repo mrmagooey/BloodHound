@@ -14,7 +14,6 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-import 'src/styles/graph.scss';
 import {
     BaseExploreLayoutOptions,
     ContextMenuPrivilegeZonesEnabled,
@@ -52,6 +51,7 @@ import SigmaChart from 'src/components/SigmaChart';
 import { setExploreLayout, setIsExploreTableSelected, setSelectedExploreTableColumns } from 'src/ducks/global/actions';
 import { useSigmaExploreGraph } from 'src/hooks/useSigmaExploreGraph';
 import { useAppDispatch, useAppSelector } from 'src/store';
+import 'src/styles/graph.scss';
 import { initGraph } from 'src/views/Explore/utils';
 import ContextMenu from './ContextMenu/ContextMenu';
 import ExploreSearch from './ExploreSearch/ExploreSearch';

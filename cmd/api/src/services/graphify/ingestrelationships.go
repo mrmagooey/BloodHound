@@ -192,20 +192,6 @@ func IngestSessions(batch *IngestContext, sessions []ein.IngestibleSession) erro
 	return errs.Combined()
 }
 
-// baseIdentityKind returns the base identity kind used for MERGE operations.
-// AD entities use "Base"; Azure entities use "AZBase".
-// This must match the identity kind used by IngestNode so that relationship
-// endpoint stubs correctly deduplicate against existing nodes.
-func baseIdentityKind(kind graph.Kind) graph.Kind {
-	if kind == graph.EmptyKind {
-		return graph.StringKind("Base")
-	}
-	if strings.HasPrefix(kind.String(), "AZ") {
-		return graph.StringKind("AZBase")
-	}
-	return graph.StringKind("Base")
-}
-
 // endpointIdentityKind returns the identity kind for a relationship endpoint.
 // For AD/Azure endpoints, returns the classical base kind (Base/AZBase).
 // For OpenGraph endpoints (Okta, GitHub, Jamf, etc.), returns sourceKind to

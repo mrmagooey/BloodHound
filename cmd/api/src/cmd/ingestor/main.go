@@ -78,12 +78,15 @@ func main() {
 
 	// CLI mode
 	if filePath == "" {
-		slog.Error("--file is required in CLI mode")
+		slog.Error("File flag is required in CLI mode")
 		flag.Usage()
 		os.Exit(1)
 	}
 	if _, err := os.Stat(filePath); err != nil {
-		slog.Error("File not found", "file", filePath, "error", err)
+		slog.Error("File not found",
+			slog.String("file", filePath),
+			slog.String("error", err.Error()),
+		)
 		os.Exit(1)
 	}
 
@@ -91,25 +94,25 @@ func main() {
 	defer graphdb.Close(ctx)
 
 	if err := run(ctx, graphdb, filePath, ingestSchema, cfg); err != nil {
-		slog.Error("Ingest failed", "error", err)
+		slog.Error("Ingest failed", slog.String("error", err.Error()))
 		os.Exit(1)
 	}
 }
 
 // mustOpen opens or creates a kglite graph database, exiting on any error.
 func mustOpen(ctx context.Context, graphPath string) (graph.Database, upload.IngestSchema) {
-	slog.Info("Opening kglite graph database", "path", graphPath)
+	slog.Info("Opening kglite graph database", slog.String("path", graphPath))
 
 	driver, err := kglitedawgs.Open(graphPath)
 	if err != nil {
-		slog.Error("Failed to open kglite graph", "error", err)
+		slog.Error("Failed to open kglite graph", slog.String("error", err.Error()))
 		os.Exit(1)
 	}
 
 	ingestSchema, err := upload.LoadIngestSchema()
 	if err != nil {
 		driver.Close(ctx)
-		slog.Error("Failed to load ingest schema", "error", err)
+		slog.Error("Failed to load ingest schema", slog.String("error", err.Error()))
 		os.Exit(1)
 	}
 
@@ -135,7 +138,10 @@ func run(ctx context.Context, graphdb graph.Database, filePath string, ingestSch
 		RegisterSourceKind: makeRegisterFn(ctx, graphdb),
 	}
 
-	slog.Info("Starting ingestion", "file", filePath, "type", fileType)
+	slog.Info("Starting ingestion",
+		slog.String("file", filePath),
+		slog.Any("type", fileType),
+	)
 	start := time.Now()
 
 	if err := graphdb.BatchOperation(ctx, func(batch graph.Batch) error {
@@ -150,11 +156,11 @@ func run(ctx context.Context, graphdb graph.Database, filePath string, ingestSch
 
 	nodesProcessed, relsProcessed, nodesWritten, relsWritten := ic.Stats.GetCounts()
 	slog.Info("Ingestion complete",
-		"duration", time.Since(start).Round(time.Millisecond),
-		"nodes_processed", nodesProcessed,
-		"nodes_written", nodesWritten,
-		"relationships_processed", relsProcessed,
-		"relationships_written", relsWritten,
+		slog.Duration("duration", time.Since(start).Round(time.Millisecond)),
+		slog.Int64("nodes_processed", nodesProcessed),
+		slog.Int64("nodes_written", nodesWritten),
+		slog.Int64("relationships_processed", relsProcessed),
+		slog.Int64("relationships_written", relsWritten),
 	)
 
 	if !cfg.NoAnalysis {
@@ -187,7 +193,10 @@ func ingestZip(ctx context.Context, ic *graphify.IngestContext, zipPath string, 
 
 		tmpPath, err := extractZipEntryToTemp(f)
 		if err != nil {
-			slog.Error("Failed to extract zip entry", "name", f.Name, "error", err)
+			slog.Error("Failed to extract zip entry",
+				slog.String("name", f.Name),
+				slog.String("error", err.Error()),
+			)
 			if firstErr == nil {
 				firstErr = err
 			}
@@ -195,7 +204,10 @@ func ingestZip(ctx context.Context, ic *graphify.IngestContext, zipPath string, 
 		}
 
 		if err := processZipEntry(ctx, ic, tmpPath, f.Name, readOpts); err != nil {
-			slog.Error("Failed to ingest zip entry", "name", f.Name, "error", err)
+			slog.Error("Failed to ingest zip entry",
+				slog.String("name", f.Name),
+				slog.String("error", err.Error()),
+			)
 			if firstErr == nil {
 				firstErr = err
 			}
@@ -214,7 +226,7 @@ func processZipEntry(ctx context.Context, ic *graphify.IngestContext, tmpPath, n
 		os.Remove(tmpPath)
 	}()
 
-	slog.Debug("Processing zip entry", "name", name)
+	slog.Debug("Processing zip entry", slog.String("name", name))
 	return graphify.ReadFileForIngest(ic, file, readOpts)
 }
 
@@ -267,9 +279,9 @@ func runAnalysis(ctx context.Context, graphdb graph.Database, adcsEnabled, ntlmE
 	}
 
 	if _, err := azure.Post(ctx, graphdb); err != nil {
-		return fmt.Errorf("Azure post-processing: %w", err)
+		return fmt.Errorf("azure post-processing: %w", err)
 	}
 
-	slog.Info("Analysis complete", "duration", time.Since(start).Round(time.Millisecond))
+	slog.Info("Analysis complete", slog.Duration("duration", time.Since(start).Round(time.Millisecond)))
 	return nil
 }

@@ -3700,7 +3700,7 @@ func defaultDigestAuthSecretWithTOTP(t *testing.T, value, totpSecret string) *mo
 func defaultDigestAuthSecret(t *testing.T, value string) *model.AuthSecret {
 	var (
 		digester = config.Argon2Configuration{
-			MemoryKibibytes: 1024 * 1024,
+			MemoryKibibytes: 1024,
 			NumIterations:   1,
 			NumThreads:      1,
 		}.NewDigester()

@@ -4,7 +4,6 @@ package e2e_test
 
 import (
 	"context"
-	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -74,13 +73,7 @@ var azureAttackPathEdges = []edgeAssertion{
 // TestADAttackPathEdges verifies that AD post-processing creates the expected derived edges.
 func TestADAttackPathEdges(t *testing.T) {
 	ctx := context.Background()
-	adZip := filepath.Join(testdataDir(), "ad_sampledata.zip")
-	skipIfMissing(t, adZip)
-
-	db := openGraph(t)
-	schema := loadIngestSchema(t)
-	ingestZip(ctx, t, db, adZip, schema)
-	runAnalysis(ctx, t, db)
+	db := sharedADGraph(t)
 
 	for _, tc := range adAttackPathEdges {
 		tc := tc
@@ -95,13 +88,7 @@ func TestADAttackPathEdges(t *testing.T) {
 // TestAzureAttackPathEdges verifies that Azure post-processing creates the expected derived edges.
 func TestAzureAttackPathEdges(t *testing.T) {
 	ctx := context.Background()
-	azureZip := filepath.Join(testdataDir(), "entra_sampledata.zip")
-	skipIfMissing(t, azureZip)
-
-	db := openGraph(t)
-	schema := loadIngestSchema(t)
-	ingestZip(ctx, t, db, azureZip, schema)
-	runAnalysis(ctx, t, db)
+	db := sharedAzureGraph(t)
 
 	for _, tc := range azureAttackPathEdges {
 		tc := tc

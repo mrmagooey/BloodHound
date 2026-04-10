@@ -29,10 +29,9 @@ import (
 
 // testKind is a helper for creating graph.Kind values in tests.
 var (
-	testNodeKind    = graph.StringKind("TestNode")
-	testAltKind     = graph.StringKind("TestAltNode")
-	testEdgeKind    = graph.StringKind("TestEdge")
-	testEdgeKind2   = graph.StringKind("TestEdge2")
+	testNodeKind  = graph.StringKind("TestNode")
+	testEdgeKind  = graph.StringKind("TestEdge")
+	testEdgeKind2 = graph.StringKind("TestEdge2")
 )
 
 // openTestDriver returns an in-memory kglite driver for use in tests.

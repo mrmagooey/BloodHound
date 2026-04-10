@@ -84,7 +84,7 @@ func ConnectGraph(ctx context.Context, cfg config.Configuration) (*graph.Databas
 
 	// Check for kglite driver first (explicit config or auto-detect)
 	if cfg.GraphDriver == kgliteDriverName || (cfg.GraphDriver == "" && cfg.GraphPath != "") {
-		slog.InfoContext(ctx, "Connecting to graph using kglite", "path", cfg.GraphPath)
+		slog.InfoContext(ctx, "Connecting to graph using kglite", slog.String("path", cfg.GraphPath))
 		driver, err := kglitedawgs.Open(cfg.GraphPath)
 		if err != nil {
 			return nil, fmt.Errorf("kglite: %w", err)

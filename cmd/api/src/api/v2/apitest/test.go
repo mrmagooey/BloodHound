@@ -39,6 +39,7 @@ func NewAuthManagementResource(mockCtrl *gomock.Controller) (auth.ManagementReso
 		os.Exit(1)
 	}
 
+	cfg.Crypto.Argon2.MemoryKibibytes = 1024
 	cfg.Crypto.Argon2.NumIterations = 1
 	cfg.Crypto.Argon2.NumThreads = 1
 

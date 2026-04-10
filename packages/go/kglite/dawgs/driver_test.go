@@ -39,22 +39,6 @@ func toInt64Val(v any) int64 {
 	return 0
 }
 
-// openInMemory is a test helper that opens an in-memory kglite graph and
-// registers cleanup to close it when the test ends.
-func openInMemory(t *testing.T) *Driver {
-	t.Helper()
-	d, err := Open("")
-	if err != nil {
-		t.Fatalf("Open(\"\") failed: %v", err)
-	}
-	t.Cleanup(func() {
-		if err := d.Close(context.Background()); err != nil {
-			t.Errorf("Close failed: %v", err)
-		}
-	})
-	return d
-}
-
 // ─── Open / Close lifecycle ────────────────────────────────────────────────────
 
 func TestOpenInMemory(t *testing.T) {
@@ -172,7 +156,7 @@ func TestDoubleClose(t *testing.T) {
 // ─── Driver configuration ─────────────────────────────────────────────────────
 
 func TestSetWriteFlushSize(t *testing.T) {
-	d := openInMemory(t)
+	d := openTestDriver(t)
 	d.SetWriteFlushSize(500)
 	if d.writeFlushSize != 500 {
 		t.Fatalf("expected writeFlushSize=500, got %d", d.writeFlushSize)
@@ -180,7 +164,7 @@ func TestSetWriteFlushSize(t *testing.T) {
 }
 
 func TestSetBatchWriteSize(t *testing.T) {
-	d := openInMemory(t)
+	d := openTestDriver(t)
 	d.SetBatchWriteSize(250)
 	if d.batchWriteSize != 250 {
 		t.Fatalf("expected batchWriteSize=250, got %d", d.batchWriteSize)
@@ -188,7 +172,7 @@ func TestSetBatchWriteSize(t *testing.T) {
 }
 
 func TestDefaultFlushSizes(t *testing.T) {
-	d := openInMemory(t)
+	d := openTestDriver(t)
 	if d.writeFlushSize != 100_000 {
 		t.Fatalf("expected default writeFlushSize=100000, got %d", d.writeFlushSize)
 	}
@@ -200,21 +184,21 @@ func TestDefaultFlushSizes(t *testing.T) {
 // ─── AssertSchema / SetDefaultGraph / FetchKinds / RefreshKinds ───────────────
 
 func TestAssertSchemaNoOp(t *testing.T) {
-	d := openInMemory(t)
+	d := openTestDriver(t)
 	if err := d.AssertSchema(context.Background(), graph.Schema{}); err != nil {
 		t.Fatalf("AssertSchema returned error: %v", err)
 	}
 }
 
 func TestSetDefaultGraphNoOp(t *testing.T) {
-	d := openInMemory(t)
+	d := openTestDriver(t)
 	if err := d.SetDefaultGraph(context.Background(), graph.Graph{}); err != nil {
 		t.Fatalf("SetDefaultGraph returned error: %v", err)
 	}
 }
 
 func TestFetchKindsEmpty(t *testing.T) {
-	d := openInMemory(t)
+	d := openTestDriver(t)
 	kinds, err := d.FetchKinds(context.Background())
 	if err != nil {
 		t.Fatalf("FetchKinds returned error: %v", err)
@@ -225,7 +209,7 @@ func TestFetchKindsEmpty(t *testing.T) {
 }
 
 func TestRefreshKindsNoOp(t *testing.T) {
-	d := openInMemory(t)
+	d := openTestDriver(t)
 	if err := d.RefreshKinds(context.Background()); err != nil {
 		t.Fatalf("RefreshKinds returned error: %v", err)
 	}
@@ -234,14 +218,14 @@ func TestRefreshKindsNoOp(t *testing.T) {
 // ─── Run ──────────────────────────────────────────────────────────────────────
 
 func TestRunBasicQuery(t *testing.T) {
-	d := openInMemory(t)
+	d := openTestDriver(t)
 	if err := d.Run(context.Background(), "MATCH (n) RETURN n", nil); err != nil {
 		t.Fatalf("Run returned error: %v", err)
 	}
 }
 
 func TestRunCreateNode(t *testing.T) {
-	d := openInMemory(t)
+	d := openTestDriver(t)
 	if err := d.Run(context.Background(), "CREATE (n:`RunNode` {name: 'test'})", nil); err != nil {
 		t.Fatalf("Run CREATE returned error: %v", err)
 	}
@@ -250,7 +234,7 @@ func TestRunCreateNode(t *testing.T) {
 // ─── ReadTransaction ──────────────────────────────────────────────────────────
 
 func TestReadTransactionBasic(t *testing.T) {
-	d := openInMemory(t)
+	d := openTestDriver(t)
 	var nodeCount int64
 	err := d.ReadTransaction(context.Background(), func(tx graph.Transaction) error {
 		result := tx.Raw("MATCH (n) RETURN count(n) AS c", nil)
@@ -272,7 +256,7 @@ func TestReadTransactionBasic(t *testing.T) {
 }
 
 func TestReadTransactionQueryKeys(t *testing.T) {
-	d := openInMemory(t)
+	d := openTestDriver(t)
 	err := d.ReadTransaction(context.Background(), func(tx graph.Transaction) error {
 		result := tx.Raw("RETURN 1 AS one, 2 AS two", nil)
 		defer result.Close()
@@ -288,7 +272,7 @@ func TestReadTransactionQueryKeys(t *testing.T) {
 }
 
 func TestReadTransactionCommit(t *testing.T) {
-	d := openInMemory(t)
+	d := openTestDriver(t)
 	err := d.ReadTransaction(context.Background(), func(tx graph.Transaction) error {
 		return tx.Commit()
 	})
@@ -298,7 +282,7 @@ func TestReadTransactionCommit(t *testing.T) {
 }
 
 func TestReadTransactionWithGraph(t *testing.T) {
-	d := openInMemory(t)
+	d := openTestDriver(t)
 	err := d.ReadTransaction(context.Background(), func(tx graph.Transaction) error {
 		// WithGraph should return same transaction (no-op for kglite)
 		tx2 := tx.WithGraph(graph.Graph{})
@@ -313,7 +297,7 @@ func TestReadTransactionWithGraph(t *testing.T) {
 }
 
 func TestReadTransactionGraphQueryMemoryLimit(t *testing.T) {
-	d := openInMemory(t)
+	d := openTestDriver(t)
 	err := d.ReadTransaction(context.Background(), func(tx graph.Transaction) error {
 		limit := tx.GraphQueryMemoryLimit()
 		if limit == 0 {
@@ -329,7 +313,7 @@ func TestReadTransactionGraphQueryMemoryLimit(t *testing.T) {
 // ─── WriteTransaction ─────────────────────────────────────────────────────────
 
 func TestWriteTransactionCreateNode(t *testing.T) {
-	d := openInMemory(t)
+	d := openTestDriver(t)
 	var createdID graph.ID
 	err := d.WriteTransaction(context.Background(), func(tx graph.Transaction) error {
 		node, err := tx.CreateNode(graph.NewProperties(), graph.StringKind("TestKind"))
@@ -362,7 +346,7 @@ func TestWriteTransactionCreateNode(t *testing.T) {
 }
 
 func TestWriteTransactionCreateNodeNoKind(t *testing.T) {
-	d := openInMemory(t)
+	d := openTestDriver(t)
 	err := d.WriteTransaction(context.Background(), func(tx graph.Transaction) error {
 		_, err := tx.CreateNode(graph.NewProperties())
 		return err
@@ -373,7 +357,7 @@ func TestWriteTransactionCreateNodeNoKind(t *testing.T) {
 }
 
 func TestWriteTransactionCreateNodeWithProperties(t *testing.T) {
-	d := openInMemory(t)
+	d := openTestDriver(t)
 	var createdNode *graph.Node
 	err := d.WriteTransaction(context.Background(), func(tx graph.Transaction) error {
 		props := graph.AsProperties(map[string]any{"name": "Alice", "enabled": true})
@@ -393,7 +377,7 @@ func TestWriteTransactionCreateNodeWithProperties(t *testing.T) {
 }
 
 func TestWriteTransactionCreateNodeMultipleKinds(t *testing.T) {
-	d := openInMemory(t)
+	d := openTestDriver(t)
 	err := d.WriteTransaction(context.Background(), func(tx graph.Transaction) error {
 		_, err := tx.CreateNode(
 			graph.NewProperties(),
@@ -409,7 +393,7 @@ func TestWriteTransactionCreateNodeMultipleKinds(t *testing.T) {
 }
 
 func TestWriteTransactionCreateRelationship(t *testing.T) {
-	d := openInMemory(t)
+	d := openTestDriver(t)
 	err := d.WriteTransaction(context.Background(), func(tx graph.Transaction) error {
 		src, err := tx.CreateNode(graph.NewProperties(), graph.StringKind("Source"))
 		if err != nil {
@@ -428,7 +412,7 @@ func TestWriteTransactionCreateRelationship(t *testing.T) {
 }
 
 func TestWriteTransactionCreateRelationshipEmptyKind(t *testing.T) {
-	d := openInMemory(t)
+	d := openTestDriver(t)
 	err := d.WriteTransaction(context.Background(), func(tx graph.Transaction) error {
 		src, err := tx.CreateNode(graph.NewProperties(), graph.StringKind("A"))
 		if err != nil {
@@ -447,7 +431,7 @@ func TestWriteTransactionCreateRelationshipEmptyKind(t *testing.T) {
 }
 
 func TestWriteTransactionUpdateNode(t *testing.T) {
-	d := openInMemory(t)
+	d := openTestDriver(t)
 	var nodeID graph.ID
 	err := d.WriteTransaction(context.Background(), func(tx graph.Transaction) error {
 		node, err := tx.CreateNode(graph.AsProperties(map[string]any{"name": "original"}), graph.StringKind("Thing"))
@@ -486,7 +470,7 @@ func TestWriteTransactionUpdateNode(t *testing.T) {
 }
 
 func TestWriteTransactionUpdateNodeNilProperties(t *testing.T) {
-	d := openInMemory(t)
+	d := openTestDriver(t)
 	err := d.WriteTransaction(context.Background(), func(tx graph.Transaction) error {
 		node, err := tx.CreateNode(graph.NewProperties(), graph.StringKind("Thing2"))
 		if err != nil {
@@ -502,7 +486,7 @@ func TestWriteTransactionUpdateNodeNilProperties(t *testing.T) {
 }
 
 func TestWriteTransactionCount(t *testing.T) {
-	d := openInMemory(t)
+	d := openTestDriver(t)
 	kind := graph.StringKind("CountTest")
 
 	// Create 3 nodes
@@ -537,7 +521,7 @@ func TestWriteTransactionCount(t *testing.T) {
 // ─── BatchOperation ───────────────────────────────────────────────────────────
 
 func TestBatchOperationCreateNodes(t *testing.T) {
-	d := openInMemory(t)
+	d := openTestDriver(t)
 	batchKind := graph.StringKind("BatchNode")
 
 	err := d.BatchOperation(context.Background(), func(batch graph.Batch) error {
@@ -574,7 +558,7 @@ func TestBatchOperationCreateNodes(t *testing.T) {
 }
 
 func TestBatchOperationCreateNodeNoKind(t *testing.T) {
-	d := openInMemory(t)
+	d := openTestDriver(t)
 	err := d.BatchOperation(context.Background(), func(batch graph.Batch) error {
 		return batch.CreateNode(&graph.Node{})
 	})
@@ -584,7 +568,7 @@ func TestBatchOperationCreateNodeNoKind(t *testing.T) {
 }
 
 func TestBatchOperationCreateRelationships(t *testing.T) {
-	d := openInMemory(t)
+	d := openTestDriver(t)
 	var srcID, dstID graph.ID
 
 	// Create source and destination nodes first
@@ -613,7 +597,7 @@ func TestBatchOperationCreateRelationships(t *testing.T) {
 }
 
 func TestBatchOperationCommit(t *testing.T) {
-	d := openInMemory(t)
+	d := openTestDriver(t)
 	err := d.BatchOperation(context.Background(), func(batch graph.Batch) error {
 		return batch.Commit()
 	})
@@ -623,7 +607,7 @@ func TestBatchOperationCommit(t *testing.T) {
 }
 
 func TestBatchOperationWithGraph(t *testing.T) {
-	d := openInMemory(t)
+	d := openTestDriver(t)
 	err := d.BatchOperation(context.Background(), func(batch graph.Batch) error {
 		b2 := batch.WithGraph(graph.Graph{})
 		if b2 == nil {
@@ -637,7 +621,7 @@ func TestBatchOperationWithGraph(t *testing.T) {
 }
 
 func TestBatchOperationNodesRelationships(t *testing.T) {
-	d := openInMemory(t)
+	d := openTestDriver(t)
 	err := d.BatchOperation(context.Background(), func(batch graph.Batch) error {
 		// Just ensure Nodes() and Relationships() don't panic
 		_ = batch.Nodes()
@@ -650,7 +634,7 @@ func TestBatchOperationNodesRelationships(t *testing.T) {
 }
 
 func TestBatchOperationDeleteNode(t *testing.T) {
-	d := openInMemory(t)
+	d := openTestDriver(t)
 	var nodeID graph.ID
 
 	// Create a node first
@@ -674,7 +658,7 @@ func TestBatchOperationDeleteNode(t *testing.T) {
 }
 
 func TestBatchOperationDeleteRelationship(t *testing.T) {
-	d := openInMemory(t)
+	d := openTestDriver(t)
 	err := d.BatchOperation(context.Background(), func(batch graph.Batch) error {
 		// Deleting non-existent relationship should not error
 		return batch.DeleteRelationship(graph.ID(9999))
@@ -687,7 +671,7 @@ func TestBatchOperationDeleteRelationship(t *testing.T) {
 // ─── Save ─────────────────────────────────────────────────────────────────────
 
 func TestSaveInMemoryNoError(t *testing.T) {
-	d := openInMemory(t)
+	d := openTestDriver(t)
 	if err := d.Save(); err != nil {
 		t.Fatalf("Save() on in-memory graph returned error: %v", err)
 	}
@@ -716,7 +700,7 @@ func TestSaveFileBacked(t *testing.T) {
 // ─── Transaction.Nodes() / Relationships() queries ────────────────────────────
 
 func TestTransactionNodesQuery(t *testing.T) {
-	d := openInMemory(t)
+	d := openTestDriver(t)
 
 	// Create a node to query
 	if err := d.WriteTransaction(context.Background(), func(tx graph.Transaction) error {
@@ -739,7 +723,7 @@ func TestTransactionNodesQuery(t *testing.T) {
 }
 
 func TestTransactionRelationshipsQuery(t *testing.T) {
-	d := openInMemory(t)
+	d := openTestDriver(t)
 	err := d.ReadTransaction(context.Background(), func(tx graph.Transaction) error {
 		relQuery := tx.Relationships()
 		if relQuery == nil {
@@ -755,7 +739,7 @@ func TestTransactionRelationshipsQuery(t *testing.T) {
 // ─── UpdateRelationship ────────────────────────────────────────────────────────
 
 func TestUpdateRelationshipNilProperties(t *testing.T) {
-	d := openInMemory(t)
+	d := openTestDriver(t)
 	err := d.WriteTransaction(context.Background(), func(tx graph.Transaction) error {
 		src, err := tx.CreateNode(graph.NewProperties(), graph.StringKind("RelSrc"))
 		if err != nil {
@@ -780,7 +764,7 @@ func TestUpdateRelationshipNilProperties(t *testing.T) {
 // ─── Raw query / Query alias ──────────────────────────────────────────────────
 
 func TestTransactionQueryAliasForRaw(t *testing.T) {
-	d := openInMemory(t)
+	d := openTestDriver(t)
 	err := d.ReadTransaction(context.Background(), func(tx graph.Transaction) error {
 		// Query is an alias for Raw
 		result := tx.Query("MATCH (n) RETURN count(n)", nil)
@@ -793,7 +777,7 @@ func TestTransactionQueryAliasForRaw(t *testing.T) {
 }
 
 func TestTransactionRawBadCypher(t *testing.T) {
-	d := openInMemory(t)
+	d := openTestDriver(t)
 	err := d.ReadTransaction(context.Background(), func(tx graph.Transaction) error {
 		result := tx.Raw("THIS IS NOT CYPHER !!!!", nil)
 		defer result.Close()
@@ -811,7 +795,7 @@ func TestTransactionRawBadCypher(t *testing.T) {
 // ─── Context cancellation ─────────────────────────────────────────────────────
 
 func TestReadTransactionCancelledContext(t *testing.T) {
-	d := openInMemory(t)
+	d := openTestDriver(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // cancel immediately
 
@@ -822,7 +806,7 @@ func TestReadTransactionCancelledContext(t *testing.T) {
 }
 
 func TestWriteTransactionCancelledContext(t *testing.T) {
-	d := openInMemory(t)
+	d := openTestDriver(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // cancel immediately
 

@@ -25,36 +25,18 @@ package e2e_test
 
 import (
 	"context"
-	"path/filepath"
 	"testing"
-	"time"
 )
 
-// TestLoadAndQueryKNexus loads the k-nexus-global dataset into kglite and
+// TestLoadAndQueryKNexus uses the shared pre-loaded k-nexus-global graph and
 // runs preset queries covering AD, Azure, and cross-platform node types.
 func TestLoadAndQueryKNexus(t *testing.T) {
 	ctx := context.Background()
-	knexusZip := filepath.Join(testdataDir(), "k-nexusglobal_sampledata.zip")
-	skipIfMissing(t, knexusZip)
+	db := sharedKNexusGraph(t)
 
-	db := openGraph(t)
-	schema := loadIngestSchema(t)
+	mem := []memSnapshot{takeMemSnapshot("pre-loaded")}
 
-	mem := []memSnapshot{takeMemSnapshot("baseline")}
-
-	t.Log("=== Phase 1: Ingest k-nexus-global data ===")
-	ingestDur := ingestZipTolerant(ctx, t, db, knexusZip, schema)
-	t.Logf("  Ingest duration: %s", ingestDur.Round(time.Millisecond))
-	mem = append(mem, takeMemSnapshot("after ingest"))
-
-	t.Log("=== Phase 2: Post-processing analysis ===")
-	analysisDur := runAnalysis(ctx, t, db)
-	t.Logf("  Analysis duration: %s", analysisDur.Round(time.Millisecond))
-	mem = append(mem, takeMemSnapshot("after analysis"))
-
-	t.Logf("  Total load+analyze: %s", (ingestDur + analysisDur).Round(time.Millisecond))
-
-	t.Log("=== Phase 3: Preset Cypher queries ===")
+	t.Log("=== Preset Cypher queries (data pre-loaded) ===")
 	runPresetQueries(ctx, t, db, knexusQueries)
 	mem = append(mem, takeMemSnapshot("after queries"))
 
@@ -110,4 +92,7 @@ var knexusQueries = []presetQuery{
 	// Cross-domain
 	{Name: "Domain trusts", Cypher: `MATCH ()-[r:TrustedBy]->() RETURN count(r) AS trusts`},
 	{Name: "Distinct relationship types", Cypher: `MATCH ()-[r]->() RETURN DISTINCT type(r) AS relationType ORDER BY relationType`},
+
+	// Dedup invariant: no objectid should appear on more than one node
+	{Name: "Duplicate objectids", Cypher: `MATCH (n) WHERE n.objectid IS NOT NULL WITH n.objectid AS oid, count(n) AS cnt WHERE cnt > 1 RETURN count(oid) AS duplicates`},
 }

@@ -39,6 +39,7 @@ func edgeSpecsEqual(a, b []kglite.EdgeSpec) bool {
 }
 
 func TestDedupNoDuplicates(t *testing.T) {
+	t.Parallel()
 	b := newTestBatch()
 	edges := []kglite.EdgeSpec{
 		{Src: 1, Dst: 2, Type: "TypeA"},
@@ -55,6 +56,7 @@ func TestDedupNoDuplicates(t *testing.T) {
 }
 
 func TestDedupWithinBatchDuplicate(t *testing.T) {
+	t.Parallel()
 	b := newTestBatch()
 	edges := []kglite.EdgeSpec{
 		{Src: 1, Dst: 2, Type: "TypeA", Props: map[string]interface{}{"ver": 1}},
@@ -74,6 +76,7 @@ func TestDedupWithinBatchDuplicate(t *testing.T) {
 }
 
 func TestDedupWithinBatchTriple(t *testing.T) {
+	t.Parallel()
 	b := newTestBatch()
 	edges := []kglite.EdgeSpec{
 		{Src: 1, Dst: 2, Type: "TypeA", Props: map[string]interface{}{"ver": 1}},
@@ -90,6 +93,7 @@ func TestDedupWithinBatchTriple(t *testing.T) {
 }
 
 func TestDedupCrossFlush(t *testing.T) {
+	t.Parallel()
 	b := newTestBatch()
 	edges := []kglite.EdgeSpec{
 		{Src: 1, Dst: 2, Type: "TypeA"},
@@ -108,6 +112,7 @@ func TestDedupCrossFlush(t *testing.T) {
 }
 
 func TestDedupCrossFlushWithNewEdges(t *testing.T) {
+	t.Parallel()
 	b := newTestBatch()
 	edges1 := []kglite.EdgeSpec{
 		{Src: 1, Dst: 2, Type: "TypeA"},
@@ -139,6 +144,7 @@ func TestDedupCrossFlushWithNewEdges(t *testing.T) {
 }
 
 func TestDedupDifferentTypesSameEndpoints(t *testing.T) {
+	t.Parallel()
 	b := newTestBatch()
 	edges := []kglite.EdgeSpec{
 		{Src: 1, Dst: 2, Type: "TypeA"},
@@ -151,6 +157,7 @@ func TestDedupDifferentTypesSameEndpoints(t *testing.T) {
 }
 
 func TestDedupDifferentDirectionSameType(t *testing.T) {
+	t.Parallel()
 	b := newTestBatch()
 	edges := []kglite.EdgeSpec{
 		{Src: 1, Dst: 2, Type: "TypeA"},
@@ -163,6 +170,7 @@ func TestDedupDifferentDirectionSameType(t *testing.T) {
 }
 
 func TestDedupEmptyInput(t *testing.T) {
+	t.Parallel()
 	b := newTestBatch()
 	result := b.deduplicateEdges([]kglite.EdgeSpec{})
 	if len(result) != 0 {
@@ -171,6 +179,7 @@ func TestDedupEmptyInput(t *testing.T) {
 }
 
 func TestDedupPropertiesDontAffectKey(t *testing.T) {
+	t.Parallel()
 	b := newTestBatch()
 	edges := []kglite.EdgeSpec{
 		{Src: 1, Dst: 2, Type: "TypeA", Props: map[string]interface{}{"foo": "bar"}},

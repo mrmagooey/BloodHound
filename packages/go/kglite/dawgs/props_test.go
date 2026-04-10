@@ -25,6 +25,7 @@ import (
 // ─── propsPattern ─────────────────────────────────────────────────────────────
 
 func TestPropsPatternEmpty(t *testing.T) {
+	t.Parallel()
 	pattern, params := propsPattern("p_", map[string]any{})
 	if pattern != "" {
 		t.Errorf("expected empty pattern for empty map, got %q", pattern)
@@ -35,6 +36,7 @@ func TestPropsPatternEmpty(t *testing.T) {
 }
 
 func TestPropsPatternNilMap(t *testing.T) {
+	t.Parallel()
 	pattern, params := propsPattern("p_", nil)
 	if pattern != "" {
 		t.Errorf("expected empty pattern for nil map, got %q", pattern)
@@ -45,6 +47,7 @@ func TestPropsPatternNilMap(t *testing.T) {
 }
 
 func TestPropsPatternSingleProperty(t *testing.T) {
+	t.Parallel()
 	pattern, params := propsPattern("p_", map[string]any{"name": "alice"})
 	if pattern != "{name: $p_name}" {
 		t.Errorf("unexpected pattern: %q", pattern)
@@ -55,11 +58,12 @@ func TestPropsPatternSingleProperty(t *testing.T) {
 }
 
 func TestPropsPatternMultiplePropertiesSorted(t *testing.T) {
+	t.Parallel()
 	// Keys should be sorted alphabetically
 	props := map[string]any{
-		"zzz":  "last",
-		"aaa":  "first",
-		"mmm":  42,
+		"zzz": "last",
+		"aaa": "first",
+		"mmm": 42,
 	}
 	pattern, params := propsPattern("p_", props)
 	// Should contain all three properties
@@ -76,7 +80,7 @@ func TestPropsPatternMultiplePropertiesSorted(t *testing.T) {
 	idxAAA := strings.Index(pattern, "aaa")
 	idxMMM := strings.Index(pattern, "mmm")
 	idxZZZ := strings.Index(pattern, "zzz")
-	if !(idxAAA < idxMMM && idxMMM < idxZZZ) {
+	if idxAAA >= idxMMM || idxMMM >= idxZZZ {
 		t.Errorf("keys not sorted in pattern: %q", pattern)
 	}
 	if len(params) != 3 {
@@ -85,6 +89,7 @@ func TestPropsPatternMultiplePropertiesSorted(t *testing.T) {
 }
 
 func TestPropsPatternPrefixIsolation(t *testing.T) {
+	t.Parallel()
 	// Two calls with different prefixes must not collide
 	_, params1 := propsPattern("id_", map[string]any{"name": "alice"})
 	_, params2 := propsPattern("p_", map[string]any{"name": "bob"})
@@ -97,6 +102,7 @@ func TestPropsPatternPrefixIsolation(t *testing.T) {
 }
 
 func TestPropsPatternNonScalarValueIsJSON(t *testing.T) {
+	t.Parallel()
 	// Slices should be JSON-encoded
 	props := map[string]any{"kinds": []string{"A", "B"}}
 	_, params := propsPattern("p_", props)
@@ -114,6 +120,7 @@ func TestPropsPatternNonScalarValueIsJSON(t *testing.T) {
 }
 
 func TestPropsPatternKeyWithDot(t *testing.T) {
+	t.Parallel()
 	// Dots in keys should be sanitized to underscores in param names
 	props := map[string]any{"some.key": "val"}
 	pattern, params := propsPattern("p_", props)
@@ -127,9 +134,23 @@ func TestPropsPatternKeyWithDot(t *testing.T) {
 	}
 }
 
+func TestPropsPatternResultIsValidPattern(t *testing.T) {
+	t.Parallel()
+	// The result must start with { and end with }
+	props := map[string]any{"x": 1, "y": 2}
+	pattern, _ := propsPattern("p_", props)
+	if !strings.HasPrefix(pattern, "{") {
+		t.Errorf("pattern should start with {: %q", pattern)
+	}
+	if !strings.HasSuffix(pattern, "}") {
+		t.Errorf("pattern should end with }: %q", pattern)
+	}
+}
+
 // ─── setClause ────────────────────────────────────────────────────────────────
 
 func TestSetClauseEmpty(t *testing.T) {
+	t.Parallel()
 	frag, params := setClause("n", "p_", map[string]any{})
 	if frag != "" {
 		t.Errorf("expected empty fragment for empty map, got %q", frag)
@@ -140,6 +161,7 @@ func TestSetClauseEmpty(t *testing.T) {
 }
 
 func TestSetClauseSingleProperty(t *testing.T) {
+	t.Parallel()
 	frag, params := setClause("n", "p_", map[string]any{"name": "alice"})
 	if frag != "n.name = $p_name" {
 		t.Errorf("unexpected setClause fragment: %q", frag)
@@ -150,6 +172,7 @@ func TestSetClauseSingleProperty(t *testing.T) {
 }
 
 func TestSetClauseMultiplePropertiesSorted(t *testing.T) {
+	t.Parallel()
 	props := map[string]any{
 		"zz": 99,
 		"aa": "first",
@@ -171,6 +194,7 @@ func TestSetClauseMultiplePropertiesSorted(t *testing.T) {
 }
 
 func TestSetClauseVariableName(t *testing.T) {
+	t.Parallel()
 	frag, _ := setClause("myNode", "x_", map[string]any{"age": 30})
 	if frag != "myNode.age = $x_age" {
 		t.Errorf("unexpected setClause fragment: %q", frag)
@@ -178,6 +202,7 @@ func TestSetClauseVariableName(t *testing.T) {
 }
 
 func TestSetClauseNilMap(t *testing.T) {
+	t.Parallel()
 	frag, params := setClause("n", "p_", nil)
 	if frag != "" {
 		t.Errorf("expected empty fragment for nil map, got %q", frag)
@@ -188,6 +213,7 @@ func TestSetClauseNilMap(t *testing.T) {
 }
 
 func TestSetClauseDropsID(t *testing.T) {
+	t.Parallel()
 	frag, params := setClause("n", "p_", map[string]any{
 		"id":   12345,
 		"name": "alice",
@@ -203,9 +229,47 @@ func TestSetClauseDropsID(t *testing.T) {
 	}
 }
 
+func TestSetClauseKeyWithDot(t *testing.T) {
+	t.Parallel()
+	frag, params := setClause("n", "p_", map[string]any{"some.key": "val"})
+	if !strings.Contains(frag, "n.some.key = $p_some_key") {
+		t.Errorf("expected dotted key in SET fragment, got %q", frag)
+	}
+	if _, ok := params["p_some_key"]; !ok {
+		t.Errorf("expected param p_some_key, got params: %v", params)
+	}
+}
+
+func TestSetClauseMultiplePartsCommaSeparated(t *testing.T) {
+	t.Parallel()
+	props := map[string]any{"a": 1, "b": 2, "c": 3}
+	frag, _ := setClause("n", "p_", props)
+	// Parts should be separated by ", "
+	parts := strings.Split(frag, ", ")
+	if len(parts) != 3 {
+		t.Errorf("expected 3 comma-separated parts, got %d: %q", len(parts), frag)
+	}
+	// All parts should be sorted
+	keys := make([]string, len(parts))
+	for i, p := range parts {
+		keys[i] = strings.Split(p, ".")[1]
+		keys[i] = strings.Split(keys[i], " ")[0]
+	}
+	sorted := make([]string, len(keys))
+	copy(sorted, keys)
+	sort.Strings(sorted)
+	for i := range keys {
+		if keys[i] != sorted[i] {
+			t.Errorf("expected sorted keys, got %v", keys)
+			break
+		}
+	}
+}
+
 // ─── mergeParams ──────────────────────────────────────────────────────────────
 
 func TestMergeParamsNoOverlap(t *testing.T) {
+	t.Parallel()
 	a := map[string]any{"x": 1}
 	b := map[string]any{"y": 2}
 	merged := mergeParams(a, b)
@@ -221,6 +285,7 @@ func TestMergeParamsNoOverlap(t *testing.T) {
 }
 
 func TestMergeParamsOverlapLastWins(t *testing.T) {
+	t.Parallel()
 	a := map[string]any{"key": "first"}
 	b := map[string]any{"key": "second"}
 	merged := mergeParams(a, b)
@@ -230,6 +295,7 @@ func TestMergeParamsOverlapLastWins(t *testing.T) {
 }
 
 func TestMergeParamsEmpty(t *testing.T) {
+	t.Parallel()
 	merged := mergeParams()
 	if len(merged) != 0 {
 		t.Errorf("expected empty merged map, got %v", merged)
@@ -237,6 +303,7 @@ func TestMergeParamsEmpty(t *testing.T) {
 }
 
 func TestMergeParamsSingleMap(t *testing.T) {
+	t.Parallel()
 	a := map[string]any{"a": 1, "b": 2}
 	merged := mergeParams(a)
 	if len(merged) != 2 {
@@ -245,6 +312,7 @@ func TestMergeParamsSingleMap(t *testing.T) {
 }
 
 func TestMergeParamsThreeMaps(t *testing.T) {
+	t.Parallel()
 	a := map[string]any{"a": 1}
 	b := map[string]any{"b": 2}
 	c := map[string]any{"c": 3, "a": 99} // overwrites a
@@ -260,87 +328,65 @@ func TestMergeParamsThreeMaps(t *testing.T) {
 	}
 }
 
-// ─── quoteIdent ───────────────────────────────────────────────────────────────
+// ─── quoteIdent ──────────────────────────────────────────────────────────────
 
-func TestQuoteIdentNormal(t *testing.T) {
-	result := quoteIdent("MyLabel")
-	if result != "`MyLabel`" {
-		t.Errorf("expected `MyLabel`, got %q", result)
+func TestQuoteIdent(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name   string
+		input  string
+		expect string
+	}{
+		{"normal", "MyLabel", "`MyLabel`"},
+		{"with spaces", "My Label", "`My Label`"},
+		{"empty", "", "``"},
+		{"reserved Match", "Match", "`Match`"},
+		{"reserved Return", "Return", "`Return`"},
+		{"reserved Where", "Where", "`Where`"},
+		{"reserved Contains", "Contains", "`Contains`"},
+		{"reserved With", "With", "`With`"},
 	}
-}
-
-func TestQuoteIdentWithSpaces(t *testing.T) {
-	result := quoteIdent("My Label")
-	if result != "`My Label`" {
-		t.Errorf("expected `My Label`, got %q", result)
-	}
-}
-
-func TestQuoteIdentReservedWord(t *testing.T) {
-	// Reserved Cypher words like MATCH, RETURN should be backtick-quoted
-	reserved := []string{"Match", "Return", "Where", "Contains", "With"}
-	for _, word := range reserved {
-		result := quoteIdent(word)
-		expected := "`" + word + "`"
-		if result != expected {
-			t.Errorf("quoteIdent(%q) = %q, expected %q", word, result, expected)
-		}
-	}
-}
-
-func TestQuoteIdentEmpty(t *testing.T) {
-	result := quoteIdent("")
-	if result != "``" {
-		t.Errorf("expected ``, got %q", result)
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := quoteIdent(tc.input)
+			if got != tc.expect {
+				t.Errorf("quoteIdent(%q) = %q, want %q", tc.input, got, tc.expect)
+			}
+		})
 	}
 }
 
 // ─── sanitizeKey ──────────────────────────────────────────────────────────────
 
-func TestSanitizeKeyAlphanumeric(t *testing.T) {
-	result := sanitizeKey("abc123")
-	if result != "abc123" {
-		t.Errorf("expected abc123, got %q", result)
+func TestSanitizeKey(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name   string
+		input  string
+		expect string
+	}{
+		{"alphanumeric", "abc123", "abc123"},
+		{"with dot", "some.key", "some_key"},
+		{"with hyphen", "some-key", "some_key"},
+		{"with spaces", "some key", "some_key"},
+		{"with underscore", "some_key", "some_key"},
+		{"empty", "", ""},
+		{"mixed case", "MyKey_123", "MyKey_123"},
 	}
-}
-
-func TestSanitizeKeyWithDot(t *testing.T) {
-	result := sanitizeKey("some.key")
-	if result != "some_key" {
-		t.Errorf("expected some_key, got %q", result)
-	}
-}
-
-func TestSanitizeKeyWithHyphen(t *testing.T) {
-	result := sanitizeKey("some-key")
-	if result != "some_key" {
-		t.Errorf("expected some_key, got %q", result)
-	}
-}
-
-func TestSanitizeKeyWithSpaces(t *testing.T) {
-	result := sanitizeKey("some key")
-	if result != "some_key" {
-		t.Errorf("expected some_key, got %q", result)
-	}
-}
-
-func TestSanitizeKeyWithUnderscore(t *testing.T) {
-	// Underscores should be preserved
-	result := sanitizeKey("some_key")
-	if result != "some_key" {
-		t.Errorf("expected some_key, got %q", result)
-	}
-}
-
-func TestSanitizeKeyEmpty(t *testing.T) {
-	result := sanitizeKey("")
-	if result != "" {
-		t.Errorf("expected empty string, got %q", result)
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := sanitizeKey(tc.input)
+			if got != tc.expect {
+				t.Errorf("sanitizeKey(%q) = %q, want %q", tc.input, got, tc.expect)
+			}
+		})
 	}
 }
 
 func TestSanitizeKeyAllSpecialChars(t *testing.T) {
+	t.Parallel()
 	result := sanitizeKey("!@#$%^&*()")
 	// All chars should be replaced with underscores
 	for _, r := range result {
@@ -351,87 +397,65 @@ func TestSanitizeKeyAllSpecialChars(t *testing.T) {
 	}
 }
 
-func TestSanitizeKeyMixedCase(t *testing.T) {
-	result := sanitizeKey("MyKey_123")
-	if result != "MyKey_123" {
-		t.Errorf("expected MyKey_123, got %q", result)
-	}
-}
-
 // ─── scalarize ────────────────────────────────────────────────────────────────
 
-func TestScalarizeNil(t *testing.T) {
-	result := scalarize(nil)
-	if result != nil {
-		t.Errorf("expected nil, got %v", result)
+func TestScalarizePassthrough(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name   string
+		input  any
+		expect any
+	}{
+		{"nil", nil, nil},
+		{"string", "hello", "hello"},
+		{"int", 42, 42},
+		{"int64", int64(1234567890), int64(1234567890)},
+		{"float64", 3.14, 3.14},
+		{"bool true", true, true},
+		{"bool false", false, false},
+		{"uint8", uint8(255), uint8(255)},
+		{"uint32", uint32(42), uint32(42)},
+		{"float32", float32(1.5), float32(1.5)},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := scalarize(tc.input)
+			if got != tc.expect {
+				t.Errorf("scalarize(%v) = %v (%T), want %v (%T)", tc.input, got, got, tc.expect, tc.expect)
+			}
+		})
 	}
 }
 
-func TestScalarizeString(t *testing.T) {
-	result := scalarize("hello")
-	if result != "hello" {
-		t.Errorf("expected hello, got %v", result)
+func TestScalarizeJSON(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name   string
+		input  any
+		expect string
+	}{
+		{"string slice", []string{"a", "b", "c"}, `["a","b","c"]`},
+		{"int slice", []int{1, 2, 3}, `[1,2,3]`},
+		{"empty slice", []string{}, `[]`},
 	}
-}
-
-func TestScalarizeInt(t *testing.T) {
-	result := scalarize(42)
-	if result != 42 {
-		t.Errorf("expected 42, got %v", result)
-	}
-}
-
-func TestScalarizeInt64(t *testing.T) {
-	result := scalarize(int64(1234567890))
-	if result != int64(1234567890) {
-		t.Errorf("expected 1234567890, got %v", result)
-	}
-}
-
-func TestScalarizeFloat64(t *testing.T) {
-	result := scalarize(3.14)
-	if result != 3.14 {
-		t.Errorf("expected 3.14, got %v", result)
-	}
-}
-
-func TestScalarizeBoolTrue(t *testing.T) {
-	result := scalarize(true)
-	if result != true {
-		t.Errorf("expected true, got %v", result)
-	}
-}
-
-func TestScalarizeBoolFalse(t *testing.T) {
-	result := scalarize(false)
-	if result != false {
-		t.Errorf("expected false, got %v", result)
-	}
-}
-
-func TestScalarizeStringSlice(t *testing.T) {
-	result := scalarize([]string{"a", "b", "c"})
-	s, ok := result.(string)
-	if !ok {
-		t.Fatalf("expected string (JSON), got %T: %v", result, result)
-	}
-	if s != `["a","b","c"]` {
-		t.Errorf("unexpected JSON: %q", s)
-	}
-}
-
-func TestScalarizeIntSlice(t *testing.T) {
-	result := scalarize([]int{1, 2, 3})
-	s, ok := result.(string)
-	if !ok {
-		t.Fatalf("expected string (JSON), got %T: %v", result, result)
-	}
-	if s != `[1,2,3]` {
-		t.Errorf("unexpected JSON: %q", s)
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			result := scalarize(tc.input)
+			s, ok := result.(string)
+			if !ok {
+				t.Fatalf("expected string (JSON), got %T: %v", result, result)
+			}
+			if s != tc.expect {
+				t.Errorf("scalarize(%v) = %q, want %q", tc.input, s, tc.expect)
+			}
+		})
 	}
 }
 
 func TestScalarizeMap(t *testing.T) {
+	t.Parallel()
 	// Maps should be JSON-encoded
 	m := map[string]any{"key": "val"}
 	result := scalarize(m)
@@ -444,41 +468,10 @@ func TestScalarizeMap(t *testing.T) {
 	}
 }
 
-func TestScalarizeEmptySlice(t *testing.T) {
-	result := scalarize([]string{})
-	s, ok := result.(string)
-	if !ok {
-		t.Fatalf("expected string (JSON), got %T: %v", result, result)
-	}
-	if s != `[]` {
-		t.Errorf("unexpected JSON for empty slice: %q", s)
-	}
-}
-
-func TestScalarizeUint8(t *testing.T) {
-	result := scalarize(uint8(255))
-	if result != uint8(255) {
-		t.Errorf("expected 255, got %v", result)
-	}
-}
-
-func TestScalarizeUint32(t *testing.T) {
-	result := scalarize(uint32(42))
-	if result != uint32(42) {
-		t.Errorf("expected 42, got %v", result)
-	}
-}
-
-func TestScalarizeFloat32(t *testing.T) {
-	result := scalarize(float32(1.5))
-	if result != float32(1.5) {
-		t.Errorf("expected 1.5, got %v", result)
-	}
-}
-
 // ─── integration: propsPattern + setClause + mergeParams ─────────────────────
 
 func TestPropsAndSetClauseIntegration(t *testing.T) {
+	t.Parallel()
 	// Simulate UpdateNodeBy: identity pattern + set clause combined
 	identityMap := map[string]any{"objectid": "abc-123"}
 	propsMap := map[string]any{"name": "Alice", "enabled": true}
@@ -504,42 +497,5 @@ func TestPropsAndSetClauseIntegration(t *testing.T) {
 	}
 	if allParams["p_enabled"] != true {
 		t.Errorf("expected p_enabled=true, got %v", allParams["p_enabled"])
-	}
-}
-
-func TestPropsPatternResultIsValidPattern(t *testing.T) {
-	// The result must start with { and end with }
-	props := map[string]any{"x": 1, "y": 2}
-	pattern, _ := propsPattern("p_", props)
-	if !strings.HasPrefix(pattern, "{") {
-		t.Errorf("pattern should start with {: %q", pattern)
-	}
-	if !strings.HasSuffix(pattern, "}") {
-		t.Errorf("pattern should end with }: %q", pattern)
-	}
-}
-
-func TestSetClauseMultiplePartsCommaSeparated(t *testing.T) {
-	props := map[string]any{"a": 1, "b": 2, "c": 3}
-	frag, _ := setClause("n", "p_", props)
-	// Parts should be separated by ", "
-	parts := strings.Split(frag, ", ")
-	if len(parts) != 3 {
-		t.Errorf("expected 3 comma-separated parts, got %d: %q", len(parts), frag)
-	}
-	// All parts should be sorted
-	keys := make([]string, len(parts))
-	for i, p := range parts {
-		keys[i] = strings.Split(p, ".")[1]
-		keys[i] = strings.Split(keys[i], " ")[0]
-	}
-	sorted := make([]string, len(keys))
-	copy(sorted, keys)
-	sort.Strings(sorted)
-	for i := range keys {
-		if keys[i] != sorted[i] {
-			t.Errorf("expected sorted keys, got %v", keys)
-			break
-		}
 	}
 }

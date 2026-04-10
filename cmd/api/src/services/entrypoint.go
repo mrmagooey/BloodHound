@@ -60,7 +60,7 @@ func ConnectPostgres(cfg config.Configuration) (*database.BloodhoundDB, error) {
 		err error
 	)
 	if cfg.SQLitePath != "" {
-		slog.Info("Using SQLite database", "path", cfg.SQLitePath)
+		slog.Info("Using SQLite database", slog.String("path", cfg.SQLitePath))
 		db, err = database.OpenSQLiteDatabase(cfg.SQLitePath)
 	} else {
 		db, err = database.OpenDatabase(cfg.Database.PostgreSQLConnectionString())

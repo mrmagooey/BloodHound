@@ -61,7 +61,7 @@ func StandaloneAuthMiddleware(db UserLookup, principalName string) mux.Middlewar
 				// Use a background context so the DB lookup is not cancelled
 				// if the HTTP request is aborted before the query completes.
 				if adminUser, err := db.LookupUser(context.Background(), principalName); err != nil {
-					slog.ErrorContext(request.Context(), "StandaloneAuthMiddleware: failed to look up admin user", "error", err)
+					slog.ErrorContext(request.Context(), "StandaloneAuthMiddleware: failed to look up admin user", slog.String("error", err.Error()))
 				} else {
 					mu.Lock()
 					cachedUser = adminUser

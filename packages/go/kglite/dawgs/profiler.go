@@ -36,10 +36,9 @@ type QueryProfiler struct {
 }
 
 type queryStats struct {
-	callCount  int
-	totalTime  time.Duration
-	maxTime    time.Duration
-	sampleArgs string // first set of params seen, for context
+	callCount int
+	totalTime time.Duration
+	maxTime   time.Duration
 }
 
 var globalProfiler *QueryProfiler

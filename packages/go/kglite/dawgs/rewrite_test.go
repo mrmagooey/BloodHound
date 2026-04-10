@@ -21,6 +21,7 @@ import (
 )
 
 func TestRewriteMultiTypeRel(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name   string
 		input  string
@@ -70,6 +71,7 @@ func TestRewriteMultiTypeRel(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			got := rewriteMultiTypeRel(tt.input)
 			if got != tt.expect {
 				t.Errorf("rewriteMultiTypeRel(%q)\n  got:    %q\n  expect: %q", tt.input, got, tt.expect)
@@ -79,6 +81,7 @@ func TestRewriteMultiTypeRel(t *testing.T) {
 }
 
 func TestRewriteLabelWhere(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name   string
 		input  string
@@ -143,6 +146,7 @@ func TestRewriteLabelWhere(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			got := rewriteLabelWhere(tt.input)
 			if got != tt.expect {
 				t.Errorf("rewriteLabelWhere(%q)\n  got:    %q\n  expect: %q", tt.input, got, tt.expect)
@@ -231,6 +235,7 @@ func TestRewriteInParam(t *testing.T) {
 }
 
 func TestRewriteEmptyWhere(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name   string
 		input  string
@@ -270,6 +275,7 @@ func TestRewriteEmptyWhere(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			got := rewriteEmptyWhere(tt.input)
 			if got != tt.expect {
 				t.Errorf("rewriteEmptyWhere(%q)\n  got:    %q\n  expect: %q", tt.input, got, tt.expect)
@@ -279,6 +285,7 @@ func TestRewriteEmptyWhere(t *testing.T) {
 }
 
 func TestRewriteForKglite(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name   string
 		input  string

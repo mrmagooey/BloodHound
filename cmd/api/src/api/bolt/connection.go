@@ -86,7 +86,10 @@ func (c *Connection) Handle() {
 	defer c.conn.Close()
 
 	if err := c.handshake(); err != nil {
-		slog.Error("Bolt handshake failed", slog.String("remote", c.conn.RemoteAddr().String()), slog.String("error", err.Error()))
+		slog.Error("Bolt handshake failed",
+			slog.String("remote", c.conn.RemoteAddr().String()),
+			slog.String("error", err.Error()),
+		)
 		return
 	}
 
@@ -142,7 +145,10 @@ func (c *Connection) handshake() error {
 		return fmt.Errorf("no compatible Bolt version found")
 	}
 
-	slog.Debug("Bolt handshake complete", slog.String("remote", c.conn.RemoteAddr().String()), slog.String("version", "4.4"))
+	slog.Debug("Bolt handshake complete",
+		slog.String("remote", c.conn.RemoteAddr().String()),
+		slog.String("version", "4.4"),
+	)
 	return nil
 }
 
@@ -152,7 +158,10 @@ func (c *Connection) messageLoop() {
 		data, err := ReadMessage(c.conn)
 		if err != nil {
 			if err != io.EOF && !isConnClosed(err) {
-				slog.Error("Bolt read error", slog.String("remote", c.conn.RemoteAddr().String()), slog.String("error", err.Error()))
+				slog.Error("Bolt read error",
+				slog.String("remote", c.conn.RemoteAddr().String()),
+				slog.String("error", err.Error()),
+			)
 			}
 			return
 		}

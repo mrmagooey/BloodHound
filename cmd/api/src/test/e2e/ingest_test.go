@@ -454,105 +454,45 @@ var azurePresetQueries = []presetQuery{
 	},
 }
 
-// TestLoadAndQueryAD loads the AD sample data and runs the AD preset queries.
+// TestLoadAndQueryAD uses the shared pre-loaded AD graph and runs the AD preset queries.
 func TestLoadAndQueryAD(t *testing.T) {
 	ctx := context.Background()
-	adZip := filepath.Join(testdataDir(), "ad_sampledata.zip")
-	skipIfMissing(t, adZip)
+	db := sharedADGraph(t)
 
-	db := openGraph(t)
-	schema := loadIngestSchema(t)
+	mem := []memSnapshot{takeMemSnapshot("pre-loaded")}
 
-	mem := []memSnapshot{takeMemSnapshot("baseline")}
-
-	t.Log("=== Phase 1: Ingest AD sample data ===")
-	ingestDur := ingestZip(ctx, t, db, adZip, schema)
-	t.Logf("  Ingest duration: %s", ingestDur.Round(time.Millisecond))
-	mem = append(mem, takeMemSnapshot("after ingest"))
-
-	t.Log("=== Phase 2: AD post-processing analysis ===")
-	analysisDur := runAnalysis(ctx, t, db)
-	t.Logf("  Analysis duration: %s", analysisDur.Round(time.Millisecond))
-	mem = append(mem, takeMemSnapshot("after analysis"))
-
-	t.Logf("  Total load+analyze: %s", (ingestDur + analysisDur).Round(time.Millisecond))
-
-	t.Log("=== Phase 3: Preset Cypher queries ===")
+	t.Log("=== Preset Cypher queries (data pre-loaded) ===")
 	runPresetQueries(ctx, t, db, adPresetQueries)
 	mem = append(mem, takeMemSnapshot("after queries"))
 
 	logMemTable(t, mem)
 }
 
-// TestLoadAndQueryAzure loads the Entra/Azure sample data and runs Azure preset queries.
+// TestLoadAndQueryAzure uses the shared pre-loaded Azure graph and runs Azure preset queries.
 func TestLoadAndQueryAzure(t *testing.T) {
 	ctx := context.Background()
-	azureZip := filepath.Join(testdataDir(), "entra_sampledata.zip")
-	skipIfMissing(t, azureZip)
+	db := sharedAzureGraph(t)
 
-	db := openGraph(t)
-	schema := loadIngestSchema(t)
+	mem := []memSnapshot{takeMemSnapshot("pre-loaded")}
 
-	mem := []memSnapshot{takeMemSnapshot("baseline")}
-
-	t.Log("=== Phase 1: Ingest Azure/Entra sample data ===")
-	ingestDur := ingestZip(ctx, t, db, azureZip, schema)
-	t.Logf("  Ingest duration: %s", ingestDur.Round(time.Millisecond))
-	mem = append(mem, takeMemSnapshot("after ingest"))
-
-	t.Log("=== Phase 2: Azure post-processing analysis ===")
-	analysisDur := runAnalysis(ctx, t, db)
-	t.Logf("  Analysis duration: %s", analysisDur.Round(time.Millisecond))
-	mem = append(mem, takeMemSnapshot("after analysis"))
-
-	t.Logf("  Total load+analyze: %s", (ingestDur + analysisDur).Round(time.Millisecond))
-
-	t.Log("=== Phase 3: Preset Cypher queries ===")
+	t.Log("=== Preset Cypher queries (data pre-loaded) ===")
 	runPresetQueries(ctx, t, db, azurePresetQueries)
 	mem = append(mem, takeMemSnapshot("after queries"))
 
 	logMemTable(t, mem)
 }
 
-// TestLoadAndQueryAll loads both sample data sets into a single graph and runs all preset queries.
+// TestLoadAndQueryAll uses the shared pre-loaded combined AD+Azure graph and runs all preset queries.
 func TestLoadAndQueryAll(t *testing.T) {
 	ctx := context.Background()
-	adZip := filepath.Join(testdataDir(), "ad_sampledata.zip")
-	azureZip := filepath.Join(testdataDir(), "entra_sampledata.zip")
-	skipIfMissing(t, adZip)
-	skipIfMissing(t, azureZip)
+	db := sharedCombinedGraph(t)
 
-	db := openGraph(t)
-	schema := loadIngestSchema(t)
+	mem := []memSnapshot{takeMemSnapshot("pre-loaded")}
 
-	mem := []memSnapshot{takeMemSnapshot("baseline")}
-	var totalIngest time.Duration
-
-	t.Log("=== Phase 1a: Ingest AD sample data ===")
-	dur := ingestZip(ctx, t, db, adZip, schema)
-	t.Logf("  AD ingest duration: %s", dur.Round(time.Millisecond))
-	totalIngest += dur
-	mem = append(mem, takeMemSnapshot("after AD ingest"))
-
-	t.Log("=== Phase 1b: Ingest Azure/Entra sample data ===")
-	dur = ingestZip(ctx, t, db, azureZip, schema)
-	t.Logf("  Azure ingest duration: %s", dur.Round(time.Millisecond))
-	totalIngest += dur
-	mem = append(mem, takeMemSnapshot("after Azure ingest"))
-
-	t.Logf("  Total ingest: %s", totalIngest.Round(time.Millisecond))
-
-	t.Log("=== Phase 2: Full post-processing analysis ===")
-	analysisDur := runAnalysis(ctx, t, db)
-	t.Logf("  Analysis duration: %s", analysisDur.Round(time.Millisecond))
-	mem = append(mem, takeMemSnapshot("after analysis"))
-
-	t.Logf("  Total load+analyze: %s", (totalIngest + analysisDur).Round(time.Millisecond))
-
-	t.Log("=== Phase 3: AD preset queries ===")
+	t.Log("=== AD preset queries (data pre-loaded) ===")
 	runPresetQueries(ctx, t, db, adPresetQueries)
 
-	t.Log("=== Phase 4: Azure preset queries ===")
+	t.Log("=== Azure preset queries (data pre-loaded) ===")
 	runPresetQueries(ctx, t, db, azurePresetQueries)
 	mem = append(mem, takeMemSnapshot("after queries"))
 

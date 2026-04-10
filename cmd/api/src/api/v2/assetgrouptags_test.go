@@ -31,7 +31,6 @@ import (
 
 	"github.com/gofrs/uuid"
 	"github.com/gorilla/mux"
-	"github.com/lib/pq"
 	"github.com/specterops/bloodhound/cmd/api/src/api"
 	v2 "github.com/specterops/bloodhound/cmd/api/src/api/v2"
 	"github.com/specterops/bloodhound/cmd/api/src/api/v2/apitest"
@@ -3400,7 +3399,7 @@ func TestResources_SearchAssetGroupTags(t *testing.T) {
 		mockDB.EXPECT().GetAssetGroupTags(gomock.Any(), model.SQLFilter{}).
 			Return(model.AssetGroupTags{{Name: "test tier", Type: model.AssetGroupTagTypeTier}}, nil)
 		mockDB.EXPECT().GetAssetGroupTagSelectors(gomock.Any(), model.SQLFilter{
-			SQLString: "name ILIKE ? AND asset_group_tag_id IN ?",
+			SQLString: "LOWER(name) LIKE LOWER(?) AND asset_group_tag_id IN ?",
 			Params:    []any{"%test%", []int{0}},
 		}, v2.AssetGroupTagDefaultLimit).
 			Return(model.AssetGroupTagSelectors{}, errors.New("db error"))
@@ -3445,7 +3444,7 @@ func TestResources_SearchAssetGroupTags(t *testing.T) {
 		mockDB.EXPECT().GetDisplayNodeGraphKinds(gomock.Any())
 		mockDB.EXPECT().GetAssetGroupTags(gomock.Any(), model.SQLFilter{}).Return(myTags, nil)
 		mockDB.EXPECT().GetAssetGroupTagSelectors(gomock.Any(), model.SQLFilter{
-			SQLString: "name ILIKE ? AND asset_group_tag_id IN ?",
+			SQLString: "LOWER(name) LIKE LOWER(?) AND asset_group_tag_id IN ?",
 			Params:    []any{"%test%", []int{0}},
 		}, v2.AssetGroupTagDefaultLimit).
 			Return(model.AssetGroupTagSelectors{{Name: "test selector"}}, nil)
@@ -3519,7 +3518,7 @@ func TestResources_SearchAssetGroupTags(t *testing.T) {
 		mockDB.EXPECT().GetDisplayNodeGraphKinds(gomock.Any())
 		mockDB.EXPECT().GetAssetGroupTags(gomock.Any(), model.SQLFilter{}).Return(model.AssetGroupTags{{Name: "test label", Type: model.AssetGroupTagTypeLabel}}, nil)
 		mockDB.EXPECT().GetAssetGroupTagSelectors(gomock.Any(), model.SQLFilter{
-			SQLString: "name ILIKE ? AND asset_group_tag_id IN ?",
+			SQLString: "LOWER(name) LIKE LOWER(?) AND asset_group_tag_id IN ?",
 			Params:    []any{"%test%", []int{0}},
 		}, v2.AssetGroupTagDefaultLimit).
 			Return(model.AssetGroupTagSelectors{{Name: "test selector"}}, nil)
@@ -3592,7 +3591,7 @@ func TestResources_SearchAssetGroupTags(t *testing.T) {
 		mockDB.EXPECT().GetDisplayNodeGraphKinds(gomock.Any())
 		mockDB.EXPECT().GetAssetGroupTags(gomock.Any(), model.SQLFilter{}).Return(model.AssetGroupTags{{Name: "test owned label", Type: model.AssetGroupTagTypeLabel}, {Name: "owned", Type: model.AssetGroupTagTypeOwned}}, nil)
 		mockDB.EXPECT().GetAssetGroupTagSelectors(gomock.Any(), model.SQLFilter{
-			SQLString: "name ILIKE ? AND asset_group_tag_id IN ?",
+			SQLString: "LOWER(name) LIKE LOWER(?) AND asset_group_tag_id IN ?",
 			Params:    []any{"%owned%", []int{0, 0}},
 		}, v2.AssetGroupTagDefaultLimit).
 			Return(model.AssetGroupTagSelectors{}, nil)
@@ -3665,7 +3664,7 @@ func TestResources_SearchAssetGroupTags(t *testing.T) {
 		mockDB.EXPECT().GetDisplayNodeGraphKinds(gomock.Any())
 		mockDB.EXPECT().GetAssetGroupTags(gomock.Any(), model.SQLFilter{}).Return(model.AssetGroupTags{{Name: "test tier", Type: model.AssetGroupTagTypeTier}}, nil)
 		mockDB.EXPECT().GetAssetGroupTagSelectors(gomock.Any(), model.SQLFilter{
-			SQLString: "name ILIKE ? AND asset_group_tag_id IN ?",
+			SQLString: "LOWER(name) LIKE LOWER(?) AND asset_group_tag_id IN ?",
 			Params:    []any{"%123%", []int{0}},
 		}, v2.AssetGroupTagDefaultLimit).Return(model.AssetGroupTagSelectors{}, nil)
 		mockGraphDb.EXPECT().GetFilteredAndSortedNodesPaginated(query.SortItems{{SortCriteria: query.NodeProperty("name"), Direction: query.SortDirectionAscending}},
@@ -3745,7 +3744,7 @@ func TestResources_SearchAssetGroupTags(t *testing.T) {
 		)
 
 		mockDB.EXPECT().GetAssetGroupTagSelectors(gomock.Any(), model.SQLFilter{
-			SQLString: "name ILIKE ? AND asset_group_tag_id IN ?",
+			SQLString: "LOWER(name) LIKE LOWER(?) AND asset_group_tag_id IN ?",
 			Params:    []any{"%test%", []int{assetGroupTagIdZone}},
 		}, v2.AssetGroupTagDefaultLimit).Return(model.AssetGroupTagSelectors{
 			{Name: "test selector", AssetGroupTagId: assetGroupTagIdZone},
@@ -3831,7 +3830,7 @@ func TestResources_SearchAssetGroupTags(t *testing.T) {
 		)
 
 		mockDB.EXPECT().GetAssetGroupTagSelectors(gomock.Any(), model.SQLFilter{
-			SQLString: "name ILIKE ? AND asset_group_tag_id IN ?",
+			SQLString: "LOWER(name) LIKE LOWER(?) AND asset_group_tag_id IN ?",
 			Params:    []any{"%random%", []int{assetGroupTagIdLabel}},
 		}, v2.AssetGroupTagDefaultLimit).Return(model.AssetGroupTagSelectors{
 			{Name: "random test selector", AssetGroupTagId: assetGroupTagIdLabel},
@@ -4102,7 +4101,7 @@ func TestResources_SearchAssetGroupTagHistory(t *testing.T) {
 		expected     expected
 	}
 
-	expectedFuzzySQLQuery := "actor ILIKE ANY(?) OR email ILIKE ANY(?) OR action ILIKE ANY(?) OR target ILIKE ANY(?)"
+	expectedFuzzySQLQuery := "LOWER(actor) LIKE LOWER(?) OR LOWER(actor) LIKE LOWER(?) OR LOWER(email) LIKE LOWER(?) OR LOWER(email) LIKE LOWER(?) OR LOWER(action) LIKE LOWER(?) OR LOWER(action) LIKE LOWER(?) OR LOWER(target) LIKE LOWER(?) OR LOWER(target) LIKE LOWER(?)"
 	tt := []testData{
 		{
 			name: "cannot decode request body error",
@@ -4183,8 +4182,8 @@ func TestResources_SearchAssetGroupTagHistory(t *testing.T) {
 			setupMocks: func(t *testing.T, mock *mock) {
 				t.Helper()
 				mock.mockDatabase.EXPECT().GetAssetGroupHistoryRecords(gomock.Any(), model.SQLFilter{
-					SQLString: "(actor ILIKE ANY(?) OR email ILIKE ANY(?) OR action ILIKE ANY(?) OR target ILIKE ANY(?))",
-					Params:    []any{pq.StringArray{"%test%", "%test%"}, pq.StringArray{"%test%", "%test%"}, pq.StringArray{"%test%", "%test%"}, pq.StringArray{"%test%", "%test%"}},
+					SQLString: "(LOWER(actor) LIKE LOWER(?) OR LOWER(actor) LIKE LOWER(?) OR LOWER(email) LIKE LOWER(?) OR LOWER(email) LIKE LOWER(?) OR LOWER(action) LIKE LOWER(?) OR LOWER(action) LIKE LOWER(?) OR LOWER(target) LIKE LOWER(?) OR LOWER(target) LIKE LOWER(?))",
+					Params:    []any{"%test%", "%test%", "%test%", "%test%", "%test%", "%test%", "%test%", "%test%"},
 				},
 					model.Sort{{Column: "created_at", Direction: model.DescendingSortDirection}},
 					0,
@@ -4228,10 +4227,8 @@ func TestResources_SearchAssetGroupTagHistory(t *testing.T) {
 					}
 
 					for _, param := range sqlFilter.Params {
-						for _, inner := range param.(pq.StringArray) {
-							if inner != "%UpdateTag%" {
-								return false
-							}
+						if param != "%UpdateTag%" {
+							return false
 						}
 					}
 
@@ -4299,10 +4296,8 @@ func TestResources_SearchAssetGroupTagHistory(t *testing.T) {
 					}
 
 					for _, param := range sqlFilter.Params {
-						for _, inner := range param.(pq.StringArray) {
-							if inner != "%user1@domain.com%" {
-								return false
-							}
+						if param != "%user1@domain.com%" {
+							return false
 						}
 					}
 

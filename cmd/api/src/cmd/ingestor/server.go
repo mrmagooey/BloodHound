@@ -53,7 +53,7 @@ func runServer(ctx context.Context) {
 	env := readServerEnv()
 
 	if env.APIToken == "" {
-		slog.Error("INGESTOR_API_TOKEN is required in server mode")
+		slog.Error("INGESTOR_API_TOKEN environment variable is required in server mode")
 		os.Exit(1)
 	}
 
@@ -62,7 +62,7 @@ func runServer(ctx context.Context) {
 
 	srv := newServer(graphdb, ingestSchema, env.APIToken, env.Config)
 	if err := srv.start(ctx, env.Port); err != nil {
-		slog.Error("Server error", "error", err)
+		slog.Error("Server error", slog.String("error", err.Error()))
 		os.Exit(1)
 	}
 }
@@ -130,11 +130,11 @@ func (s *server) start(ctx context.Context, port string) error {
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 		if err := srv.Shutdown(shutdownCtx); err != nil {
-			slog.Error("Server shutdown error", "error", err)
+			slog.Error("Server shutdown error", slog.String("error", err.Error()))
 		}
 	}()
 
-	slog.Info("Server listening", "port", port)
+	slog.Info("Server listening", slog.String("port", port))
 	err := srv.ListenAndServe()
 
 	// Wait for the worker to finish the current job before returning.
@@ -168,7 +168,7 @@ func (s *server) handleIngest(w http.ResponseWriter, r *http.Request) {
 
 	tmp, err := os.CreateTemp("", "bh-ingestor-upload-*")
 	if err != nil {
-		slog.Error("Failed to create temp file", "error", err)
+		slog.Error("Failed to create temp file", slog.String("error", err.Error()))
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
@@ -176,7 +176,7 @@ func (s *server) handleIngest(w http.ResponseWriter, r *http.Request) {
 	if _, err := io.Copy(tmp, file); err != nil {
 		tmp.Close()
 		os.Remove(tmp.Name())
-		slog.Error("Failed to write upload to disk", "error", err)
+		slog.Error("Failed to write upload to disk", slog.String("error", err.Error()))
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
@@ -187,7 +187,10 @@ func (s *server) handleIngest(w http.ResponseWriter, r *http.Request) {
 
 	select {
 	case s.queue <- job:
-		slog.Info("Job queued", "job_id", jobID, "queue_depth", len(s.queue))
+		slog.Info("Job queued",
+			slog.String("job_id", jobID),
+			slog.Int("queue_depth", len(s.queue)),
+		)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusAccepted)
 		json.NewEncoder(w).Encode(map[string]any{
@@ -207,11 +210,14 @@ func (s *server) worker(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case job := <-s.queue:
-			slog.Info("Processing job", "job_id", job.id)
+			slog.Info("Processing job", slog.String("job_id", job.id))
 			if err := run(ctx, s.graphdb, job.tmpPath, s.ingestSchema, s.cfg); err != nil {
-				slog.Error("Job failed", "job_id", job.id, "error", err)
+				slog.Error("Job failed",
+					slog.String("job_id", job.id),
+					slog.String("error", err.Error()),
+				)
 			} else {
-				slog.Info("Job complete", "job_id", job.id)
+				slog.Info("Job complete", slog.String("job_id", job.id))
 			}
 			os.Remove(job.tmpPath)
 		}
@@ -242,7 +248,11 @@ func envBool(key string, defaultVal bool) bool {
 	}
 	b, err := strconv.ParseBool(v)
 	if err != nil {
-		slog.Warn("Invalid boolean env var, using default", "key", key, "value", v, "default", defaultVal)
+		slog.Warn("Invalid boolean env var, using default",
+			slog.String("key", key),
+			slog.String("value", v),
+			slog.Bool("default", defaultVal),
+		)
 		return defaultVal
 	}
 	return b
