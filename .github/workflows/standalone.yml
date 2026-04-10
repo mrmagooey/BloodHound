@@ -134,7 +134,11 @@ jobs:
         run: npm install -g yarn
 
       - name: Build kglite static library (Windows GNU target)
-        run: cd kglite-ffi && cargo build --release --no-default-features --features ffi --target x86_64-pc-windows-gnu
+        run: |
+          cd kglite-ffi && cargo build --release --no-default-features --features ffi --target x86_64-pc-windows-gnu
+          mkdir -p target/release
+          cp target/x86_64-pc-windows-gnu/release/libkglite.a target/release/libkglite.a
+        shell: bash
 
       - name: Build UI
         run: yarn install && yarn workspace bloodhound-ui build
@@ -146,10 +150,6 @@ jobs:
       - name: Build Windows binary
         env:
           CGO_ENABLED: "1"
-          GOOS: windows
-          GOARCH: amd64
-          CC: gcc
-          CGO_LDFLAGS: "kglite-ffi/target/x86_64-pc-windows-gnu/release/libkglite.a -lm -lws2_32 -luserenv -lntdll -lbcrypt"
         run: go build -tags standalone -o bloodhound-standalone.exe ./cmd/api/src/cmd/bhapi
 
       - name: Upload Windows binary artifact

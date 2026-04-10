@@ -14,6 +14,20 @@ COPY kglite-ffi/benches ./benches
 RUN cargo build --release --no-default-features --features ffi
 
 ########
+# Build UI assets
+################
+FROM docker.io/library/node:22-bookworm-slim AS ui-builder
+
+WORKDIR /build
+COPY package.json .yarnrc.yml yarn.lock ./
+COPY .yarn .yarn
+COPY cmd/ui cmd/ui
+COPY packages/javascript packages/javascript
+
+RUN corepack enable && yarn install --immutable
+RUN yarn workspace bloodhound-ui build
+
+########
 # Build Go binary
 ################
 FROM docker.io/library/golang:1.25.0-bookworm AS api-builder
@@ -25,6 +39,7 @@ ENV CGO_ENABLED=1
 WORKDIR /build
 COPY --parents go.mod go.sum cmd/api packages/go ./
 COPY --from=rust-builder /build/kglite-ffi/target/release/libkglite.a ./kglite-ffi/target/release/libkglite.a
+COPY --from=ui-builder /build/cmd/ui/dist/ ./cmd/api/src/api/static/assets/
 
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
