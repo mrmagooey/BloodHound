@@ -31,6 +31,84 @@ import (
 	"github.com/specterops/dawgs/util/size"
 )
 
+// inParamToElems converts a slice/array parameter value to a slice of formatted
+// Cypher literal strings without using reflect for the common types.
+// Returns (elems, true) if val is a supported slice type, (nil, false) otherwise.
+func inParamToElems(val any) ([]string, bool) {
+	switch v := val.(type) {
+	case []string:
+		elems := make([]string, len(v))
+		for i, s := range v {
+			elems[i] = "'" + s + "'"
+		}
+		return elems, true
+
+	case []graph.ID:
+		elems := make([]string, len(v))
+		for i, id := range v {
+			elems[i] = fmt.Sprintf("%d", uint64(id))
+		}
+		return elems, true
+
+	case []int64:
+		elems := make([]string, len(v))
+		for i, n := range v {
+			elems[i] = fmt.Sprintf("%d", n)
+		}
+		return elems, true
+
+	case []uint64:
+		elems := make([]string, len(v))
+		for i, n := range v {
+			elems[i] = fmt.Sprintf("%d", n)
+		}
+		return elems, true
+
+	case []int:
+		elems := make([]string, len(v))
+		for i, n := range v {
+			elems[i] = fmt.Sprintf("%d", n)
+		}
+		return elems, true
+
+	case []int32:
+		elems := make([]string, len(v))
+		for i, n := range v {
+			elems[i] = fmt.Sprintf("%d", n)
+		}
+		return elems, true
+
+	case []any:
+		elems := make([]string, len(v))
+		for i, elem := range v {
+			if s, ok := elem.(string); ok {
+				elems[i] = "'" + s + "'"
+			} else {
+				elems[i] = fmt.Sprintf("%v", elem)
+			}
+		}
+		return elems, true
+
+	default:
+		// Fall back to reflect for unusual types (e.g. []float64, []bool,
+		// user-defined slice types).
+		rv := reflect.ValueOf(val)
+		if rv.Kind() != reflect.Slice && rv.Kind() != reflect.Array {
+			return nil, false
+		}
+		elems := make([]string, rv.Len())
+		for i := 0; i < rv.Len(); i++ {
+			elem := rv.Index(i).Interface()
+			if s, ok := elem.(string); ok {
+				elems[i] = "'" + s + "'"
+			} else {
+				elems[i] = fmt.Sprintf("%v", elem)
+			}
+		}
+		return elems, true
+	}
+}
+
 // reVarKindInWhere matches "var:Kind" label-check patterns inside WHERE clauses.
 // Only the portion after the WHERE keyword is scanned so MATCH patterns are not affected.
 var reVarKindInWhere = regexp.MustCompile(`(\w+):([\w` + "`" + `]+)`)
@@ -102,6 +180,10 @@ func rewriteEmptyWhere(cypher string) string {
 // rewriteInParam expands "IN $paramName" into "IN [val1, val2, ...]" by
 // inlining the parameter value. kglite's Cypher parser requires a literal
 // list after IN, not a parameter reference.
+//
+// Common concrete types ([]string, []graph.ID, []int64, []uint64, []int) are
+// handled via a type switch in inParamToElems to avoid reflect allocations on
+// the hot path. Unknown slice types fall back to reflect inside that helper.
 func rewriteInParam(cypher string, params map[string]any) string {
 	return reInParam.ReplaceAllStringFunc(cypher, func(m string) string {
 		sub := reInParam.FindStringSubmatch(m)
@@ -112,26 +194,15 @@ func rewriteInParam(cypher string, params map[string]any) string {
 			return m // parameter not found, leave unchanged
 		}
 
-		rv := reflect.ValueOf(val)
-		if rv.Kind() != reflect.Slice && rv.Kind() != reflect.Array {
+		elems, ok := inParamToElems(val)
+		if !ok {
 			return m // not a list, leave unchanged
-		}
-
-		elems := make([]string, rv.Len())
-		for i := 0; i < rv.Len(); i++ {
-			v := rv.Index(i).Interface()
-			switch v.(type) {
-			case string:
-				elems[i] = fmt.Sprintf("'%s'", v)
-			default:
-				elems[i] = fmt.Sprintf("%v", v)
-			}
 		}
 
 		// Remove the consumed parameter
 		delete(params, paramName)
 
-		return fmt.Sprintf("IN [%s]", strings.Join(elems, ", "))
+		return "IN [" + strings.Join(elems, ", ") + "]"
 	})
 }
 

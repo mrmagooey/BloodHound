@@ -17,7 +17,11 @@
 package dawgs
 
 import (
+	"fmt"
+	"reflect"
 	"testing"
+
+	"github.com/specterops/dawgs/graph"
 )
 
 func TestRewriteMultiTypeRel(t *testing.T) {
@@ -317,6 +321,251 @@ func TestRewriteForKglite(t *testing.T) {
 			got := rewriteForKglite(tt.input, tt.params)
 			if got != tt.expect {
 				t.Errorf("rewriteForKglite(%q)\n  got:    %q\n  expect: %q", tt.input, got, tt.expect)
+			}
+		})
+	}
+}
+
+// TestInParamToElems verifies that every concrete type handled by the type
+// switch in inParamToElems produces output identical to the reflect-based
+// fallback. This guards against regressions when adding or modifying arms.
+func TestInParamToElems(t *testing.T) {
+	t.Parallel()
+
+	// reflectElems is the original reflect-based implementation used as the
+	// reference for comparison in each test case.
+	reflectElems := func(val any) ([]string, bool) {
+		rv := reflect.ValueOf(val)
+		if rv.Kind() != reflect.Slice && rv.Kind() != reflect.Array {
+			return nil, false
+		}
+		elems := make([]string, rv.Len())
+		for i := 0; i < rv.Len(); i++ {
+			v := rv.Index(i).Interface()
+			switch typed := v.(type) {
+			case string:
+				elems[i] = "'" + typed + "'"
+			default:
+				elems[i] = fmt.Sprintf("%v", v)
+			}
+		}
+		return elems, true
+	}
+
+	tests := []struct {
+		name        string
+		val         any
+		wantOk      bool
+		wantElems   []string // if nil, compare against reflectElems output
+	}{
+		// ── concrete slice types ──────────────────────────────────────────
+		{
+			name:      "[]string basic",
+			val:       []string{"a", "b", "c"},
+			wantOk:    true,
+			wantElems: []string{"'a'", "'b'", "'c'"},
+		},
+		{
+			name:      "[]string empty",
+			val:       []string{},
+			wantOk:    true,
+			wantElems: []string{},
+		},
+		{
+			name:      "[]string single",
+			val:       []string{"only"},
+			wantOk:    true,
+			wantElems: []string{"'only'"},
+		},
+		{
+			name:      "[]graph.ID",
+			val:       []graph.ID{graph.ID(1), graph.ID(42), graph.ID(999)},
+			wantOk:    true,
+			wantElems: []string{"1", "42", "999"},
+		},
+		{
+			name:      "[]graph.ID empty",
+			val:       []graph.ID{},
+			wantOk:    true,
+			wantElems: []string{},
+		},
+		{
+			name:      "[]int64",
+			val:       []int64{100, 200, 300},
+			wantOk:    true,
+			wantElems: []string{"100", "200", "300"},
+		},
+		{
+			name:      "[]uint64",
+			val:       []uint64{10, 20},
+			wantOk:    true,
+			wantElems: []string{"10", "20"},
+		},
+		{
+			name:      "[]int",
+			val:       []int{1, 2, 3},
+			wantOk:    true,
+			wantElems: []string{"1", "2", "3"},
+		},
+		{
+			name:      "[]int32",
+			val:       []int32{7, 8},
+			wantOk:    true,
+			wantElems: []string{"7", "8"},
+		},
+		{
+			name:      "[]any with strings",
+			val:       []any{"x", "y"},
+			wantOk:    true,
+			wantElems: []string{"'x'", "'y'"},
+		},
+		{
+			name:      "[]any with numbers",
+			val:       []any{int64(1), int64(2)},
+			wantOk:    true,
+			wantElems: []string{"1", "2"},
+		},
+		{
+			name:   "[]any empty",
+			val:    []any{},
+			wantOk: true,
+			wantElems: []string{},
+		},
+		// ── reflect fallback ──────────────────────────────────────────────
+		{
+			name:   "[]float64 via reflect fallback",
+			val:    []float64{1.5, 2.5},
+			wantOk: true,
+			// wantElems nil → compare against reflectElems output
+		},
+		{
+			name:   "[]bool via reflect fallback",
+			val:    []bool{true, false},
+			wantOk: true,
+		},
+		// ── non-slice types ───────────────────────────────────────────────
+		{
+			name:   "string scalar — not a slice",
+			val:    "hello",
+			wantOk: false,
+		},
+		{
+			name:   "int64 scalar — not a slice",
+			val:    int64(42),
+			wantOk: false,
+		},
+		{
+			name:   "nil — not a slice",
+			val:    nil,
+			wantOk: false,
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got, ok := inParamToElems(tt.val)
+			if ok != tt.wantOk {
+				t.Fatalf("inParamToElems(%T) ok=%v, want %v", tt.val, ok, tt.wantOk)
+			}
+			if !ok {
+				return
+			}
+			// If wantElems is provided, compare directly.
+			if tt.wantElems != nil {
+				if len(got) != len(tt.wantElems) {
+					t.Fatalf("inParamToElems(%T) len=%d, want %d; got %v, want %v",
+						tt.val, len(got), len(tt.wantElems), got, tt.wantElems)
+				}
+				for i := range got {
+					if got[i] != tt.wantElems[i] {
+						t.Errorf("inParamToElems(%T)[%d] = %q, want %q", tt.val, i, got[i], tt.wantElems[i])
+					}
+				}
+				return
+			}
+			// Otherwise, compare against the reflect-based reference.
+			want, wantOk := reflectElems(tt.val)
+			if !wantOk {
+				t.Fatalf("reflectElems(%T) returned ok=false unexpectedly", tt.val)
+			}
+			if len(got) != len(want) {
+				t.Fatalf("inParamToElems(%T) len=%d, reflectElems len=%d", tt.val, len(got), len(want))
+			}
+			for i := range got {
+				if got[i] != want[i] {
+					t.Errorf("inParamToElems(%T)[%d] = %q, reflectElems = %q", tt.val, i, got[i], want[i])
+				}
+			}
+		})
+	}
+}
+
+// TestRewriteInParamAllConcreteTypes ensures rewriteInParam produces correct
+// Cypher for each concrete slice type that inParamToElems handles directly.
+func TestRewriteInParamAllConcreteTypes(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name   string
+		params map[string]any
+		expect string
+	}{
+		{
+			name:   "[]string",
+			params: map[string]any{"ids": []string{"S-1-1", "S-1-2"}},
+			expect: "MATCH (n) WHERE n.objectid IN ['S-1-1', 'S-1-2'] RETURN n",
+		},
+		{
+			name:   "[]graph.ID",
+			params: map[string]any{"ids": []graph.ID{graph.ID(1), graph.ID(2)}},
+			expect: "MATCH (n) WHERE n.objectid IN [1, 2] RETURN n",
+		},
+		{
+			name:   "[]int64",
+			params: map[string]any{"ids": []int64{10, 20}},
+			expect: "MATCH (n) WHERE n.objectid IN [10, 20] RETURN n",
+		},
+		{
+			name:   "[]uint64",
+			params: map[string]any{"ids": []uint64{30, 40}},
+			expect: "MATCH (n) WHERE n.objectid IN [30, 40] RETURN n",
+		},
+		{
+			name:   "[]int",
+			params: map[string]any{"ids": []int{1, 2, 3}},
+			expect: "MATCH (n) WHERE n.objectid IN [1, 2, 3] RETURN n",
+		},
+		{
+			name:   "[]int32",
+			params: map[string]any{"ids": []int32{5, 6}},
+			expect: "MATCH (n) WHERE n.objectid IN [5, 6] RETURN n",
+		},
+		{
+			name:   "[]any with strings",
+			params: map[string]any{"ids": []any{"a", "b"}},
+			expect: "MATCH (n) WHERE n.objectid IN ['a', 'b'] RETURN n",
+		},
+		{
+			name:   "empty slice",
+			params: map[string]any{"ids": []string{}},
+			expect: "MATCH (n) WHERE n.objectid IN [] RETURN n",
+		},
+		{
+			name:   "single element",
+			params: map[string]any{"ids": []graph.ID{graph.ID(99)}},
+			expect: "MATCH (n) WHERE n.objectid IN [99] RETURN n",
+		},
+	}
+
+	cypher := "MATCH (n) WHERE n.objectid IN $ids RETURN n"
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := rewriteInParam(cypher, tt.params)
+			if got != tt.expect {
+				t.Errorf("rewriteInParam with %T\n  got:    %q\n  expect: %q", tt.params["ids"], got, tt.expect)
 			}
 		})
 	}
