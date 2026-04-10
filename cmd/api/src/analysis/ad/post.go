@@ -19,6 +19,7 @@ package ad
 import (
 	"context"
 	"log/slog"
+	"sync"
 
 	"github.com/specterops/bloodhound/packages/go/analysis"
 	adAnalysis "github.com/specterops/bloodhound/packages/go/analysis/ad"
@@ -27,6 +28,7 @@ import (
 	"github.com/specterops/bloodhound/packages/go/graphschema/ad"
 	"github.com/specterops/bloodhound/packages/go/graphschema/azure"
 	"github.com/specterops/dawgs/graph"
+	"golang.org/x/sync/errgroup"
 )
 
 func Post(ctx context.Context, db graph.Database, adcsEnabled, citrixEnabled, ntlmEnabled bool, compositionCounter *analysis.CompositionCounter) (*analysis.AtomicPostProcessingStats, error) {
@@ -41,6 +43,7 @@ func Post(ctx context.Context, db graph.Database, adcsEnabled, citrixEnabled, nt
 
 	aggregateStats := analysis.NewAtomicPostProcessingStats()
 
+	// Phase 1: sequential prerequisites
 	if err := adAnalysis.FixWellKnownNodeTypes(ctx, db); err != nil {
 		return &aggregateStats, err
 	} else if err := adAnalysis.RunDomainAssociations(ctx, db); err != nil {
@@ -51,35 +54,116 @@ func Post(ctx context.Context, db graph.Database, adcsEnabled, citrixEnabled, nt
 		return &aggregateStats, err
 	} else if localGroupData, err := adAnalysis.FetchLocalGroupData(ctx, db); err != nil {
 		return &aggregateStats, err
-	} else if dcSyncStats, err := adAnalysis.PostDCSync(ctx, db, localGroupData); err != nil {
-		return &aggregateStats, err
-	} else if protectAdminGroupsStats, err := adAnalysis.PostProtectAdminGroups(ctx, db); err != nil {
-		return &aggregateStats, err
-	} else if syncLAPSStats, err := adAnalysis.PostSyncLAPSPassword(ctx, db, localGroupData); err != nil {
-		return &aggregateStats, err
-	} else if hasTrustKeyStats, err := adAnalysis.PostHasTrustKeys(ctx, db); err != nil {
-		return &aggregateStats, err
-	} else if localGroupStats, err := adAnalysis.PostLocalGroups(ctx, db, localGroupData); err != nil {
-		return &aggregateStats, err
-	} else if canRDPStats, err := adAnalysis.PostCanRDP(ctx, db, localGroupData, true, citrixEnabled); err != nil {
-		return &aggregateStats, err
-	} else if adcsStats, adcsCache, err := adAnalysis.PostADCS(ctx, db, localGroupData, adcsEnabled); err != nil {
-		return &aggregateStats, err
-	} else if ownsStats, err := adAnalysis.PostOwnsAndWriteOwner(ctx, db, localGroupData); err != nil {
-		return &aggregateStats, err
-	} else if ntlmStats, err := adAnalysis.PostNTLM(ctx, db, localGroupData, adcsCache, ntlmEnabled, compositionCounter); err != nil {
-		return &aggregateStats, err
 	} else {
 		aggregateStats.Merge(deleteTransitEdgesStats)
-		aggregateStats.Merge(syncLAPSStats)
-		aggregateStats.Merge(hasTrustKeyStats)
-		aggregateStats.Merge(dcSyncStats)
-		aggregateStats.Merge(protectAdminGroupsStats)
-		aggregateStats.Merge(localGroupStats)
-		aggregateStats.Merge(canRDPStats)
-		aggregateStats.Merge(adcsStats)
-		aggregateStats.Merge(ownsStats)
-		aggregateStats.Merge(ntlmStats)
+
+		// Phase 2: parallel independent steps + PostADCS (which returns adcsCache needed by PostNTLM)
+		var (
+			mu       sync.Mutex
+			adcsCache adAnalysis.ADCSCache
+		)
+
+		eg, egCtx := errgroup.WithContext(ctx)
+
+		eg.Go(func() error {
+			stats, err := adAnalysis.PostDCSync(egCtx, db, localGroupData)
+			if err != nil {
+				return err
+			}
+			mu.Lock()
+			aggregateStats.Merge(stats)
+			mu.Unlock()
+			return nil
+		})
+
+		eg.Go(func() error {
+			stats, err := adAnalysis.PostProtectAdminGroups(egCtx, db)
+			if err != nil {
+				return err
+			}
+			mu.Lock()
+			aggregateStats.Merge(stats)
+			mu.Unlock()
+			return nil
+		})
+
+		eg.Go(func() error {
+			stats, err := adAnalysis.PostSyncLAPSPassword(egCtx, db, localGroupData)
+			if err != nil {
+				return err
+			}
+			mu.Lock()
+			aggregateStats.Merge(stats)
+			mu.Unlock()
+			return nil
+		})
+
+		eg.Go(func() error {
+			stats, err := adAnalysis.PostHasTrustKeys(egCtx, db)
+			if err != nil {
+				return err
+			}
+			mu.Lock()
+			aggregateStats.Merge(stats)
+			mu.Unlock()
+			return nil
+		})
+
+		eg.Go(func() error {
+			stats, err := adAnalysis.PostLocalGroups(egCtx, db, localGroupData)
+			if err != nil {
+				return err
+			}
+			mu.Lock()
+			aggregateStats.Merge(stats)
+			mu.Unlock()
+			return nil
+		})
+
+		eg.Go(func() error {
+			stats, err := adAnalysis.PostCanRDP(egCtx, db, localGroupData, true, citrixEnabled)
+			if err != nil {
+				return err
+			}
+			mu.Lock()
+			aggregateStats.Merge(stats)
+			mu.Unlock()
+			return nil
+		})
+
+		eg.Go(func() error {
+			stats, err := adAnalysis.PostOwnsAndWriteOwner(egCtx, db, localGroupData)
+			if err != nil {
+				return err
+			}
+			mu.Lock()
+			aggregateStats.Merge(stats)
+			mu.Unlock()
+			return nil
+		})
+
+		eg.Go(func() error {
+			stats, cache, err := adAnalysis.PostADCS(egCtx, db, localGroupData, adcsEnabled)
+			if err != nil {
+				return err
+			}
+			mu.Lock()
+			aggregateStats.Merge(stats)
+			adcsCache = cache
+			mu.Unlock()
+			return nil
+		})
+
+		if err := eg.Wait(); err != nil {
+			return &aggregateStats, err
+		}
+
+		// Phase 3: PostNTLM depends on adcsCache from PostADCS
+		if ntlmStats, err := adAnalysis.PostNTLM(ctx, db, localGroupData, adcsCache, ntlmEnabled, compositionCounter); err != nil {
+			return &aggregateStats, err
+		} else {
+			aggregateStats.Merge(ntlmStats)
+		}
 
 		return &aggregateStats, nil
 	}
