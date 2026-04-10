@@ -19,7 +19,7 @@ RUN cargo build --release --no-default-features --features ffi
 FROM docker.io/library/node:22-bookworm-slim AS ui-builder
 
 WORKDIR /build
-COPY package.json .yarnrc.yml yarn.lock ./
+COPY package.json .yarnrc.yml yarn.lock turbo.json ./
 COPY .yarn .yarn
 COPY cmd/ui cmd/ui
 COPY packages/javascript packages/javascript
