@@ -286,12 +286,12 @@ func (s *GraphQuery) getAllShortestPathsInternal(ctx context.Context, startNodeI
 }
 
 func (s *GraphQuery) GetAllShortestPaths(ctx context.Context, startNodeID string, endNodeID string, filter graph.Criteria) (graph.PathSet, error) {
-	defer measure.ContextMeasureWithThreshold(ctx, slog.LevelInfo, "GetAllShortestPaths")()
+	defer measure.ContextMeasureWithThreshold(ctx, slog.LevelDebug, "GetAllShortestPaths")()
 	return s.getAllShortestPathsInternal(ctx, startNodeID, endNodeID, filter, analysis.FetchNodeByObjectID)
 }
 
 func (s *GraphQuery) GetAllShortestPathsWithOpenGraph(ctx context.Context, startNodeID string, endNodeID string, filter graph.Criteria) (graph.PathSet, error) {
-	defer measure.ContextMeasureWithThreshold(ctx, slog.LevelInfo, "GetAllShortestPathsWithOpenGraph")()
+	defer measure.ContextMeasureWithThreshold(ctx, slog.LevelDebug, "GetAllShortestPathsWithOpenGraph")()
 	return s.getAllShortestPathsInternal(ctx, startNodeID, endNodeID, filter, analysis.FetchNodeByObjectIDIncludeOpenGraph)
 }
 

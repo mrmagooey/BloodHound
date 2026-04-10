@@ -91,7 +91,7 @@ func updateAssetGroupIsolationTags(ctx context.Context, db database.AgiData, gra
 func clearSystemTags(ctx context.Context, db graph.Database, additionalFilter ...graph.Criteria) error {
 	defer measure.ContextMeasure(
 		ctx,
-		slog.LevelInfo,
+		slog.LevelDebug,
 		"Clear Legacy System Tags",
 		attr.Namespace("analysis"),
 		attr.Function("clearSystemTags"),
@@ -121,7 +121,7 @@ func clearSystemTags(ctx context.Context, db graph.Database, additionalFilter ..
 }
 
 func parallelTagAzureTierZero(ctx context.Context, db graph.Database) error {
-	defer measure.ContextMeasure(ctx, slog.LevelInfo, "Finished tagging Azure Tier Zero")()
+	defer measure.ContextMeasure(ctx, slog.LevelDebug, "Finished tagging Azure Tier Zero")()
 
 	var tenants graph.NodeSet
 
@@ -230,7 +230,7 @@ func parallelTagAzureTierZero(ctx context.Context, db graph.Database) error {
 }
 
 func tagActiveDirectoryTierZero(ctx context.Context, featureFlagProvider appcfg.GetFlagByKeyer, graphDB graph.Database) error {
-	defer measure.ContextMeasure(ctx, slog.LevelInfo, "Finished tagging Active Directory Tier Zero")()
+	defer measure.ContextMeasure(ctx, slog.LevelDebug, "Finished tagging Active Directory Tier Zero")()
 
 	if autoTagT0ParentObjectsFlag, err := featureFlagProvider.GetFlagByKey(ctx, appcfg.FeatureAutoTagT0ParentObjects); err != nil {
 		return err

@@ -327,9 +327,9 @@ func truncateStr(s string, max int) string {
 	return s
 }
 
-func reportComparison(t *testing.T, results []comparisonResult) {
+func reportComparison(t *testing.T, results []comparisonResult) (mismatches, errors int) {
 	t.Helper()
-	var matches, mismatches, errors, nonDeterministic int
+	var matches, nonDeterministic int
 	var totalKglite, totalNeo4j time.Duration
 
 	t.Logf("")
@@ -407,6 +407,19 @@ func reportComparison(t *testing.T, results []comparisonResult) {
 		totalSpeedup,
 		matches, mismatches, errors, nonDeterministic)
 	t.Logf("")
+	return mismatches, errors
+}
+
+// requireComparisonPass reports comparison results and fails the test if there
+// are any real mismatches (ordering differences are already handled by sortLines
+// in compareQueries; non-deterministic queries with LIMIT but no ORDER BY are
+// excluded from failure).
+func requireComparisonPass(t *testing.T, results []comparisonResult) {
+	t.Helper()
+	mismatches, errors := reportComparison(t, results)
+	if mismatches > 0 || errors > 0 {
+		t.Errorf("comparison failed: %d mismatches, %d errors (out of %d queries)", mismatches, errors, len(results))
+	}
 }
 
 // TestCompareAD loads AD sample data into both kglite and Neo4j, runs analysis,
@@ -464,7 +477,7 @@ func TestCompareAD(t *testing.T) {
 	// Compare preset queries
 	t.Log("=== Comparing AD preset queries ===")
 	results := compareQueries(ctx, t, kgliteDB, neo4jDB, adPresetQueries)
-	reportComparison(t, results)
+	requireComparisonPass(t, results)
 
 	// Compare attack path edges
 	attackQueries := make([]presetQuery, 0, len(adAttackPathEdges))
@@ -476,7 +489,7 @@ func TestCompareAD(t *testing.T) {
 	}
 	t.Log("=== Comparing AD attack path edges ===")
 	attackResults := compareQueries(ctx, t, kgliteDB, neo4jDB, attackQueries)
-	reportComparison(t, attackResults)
+	requireComparisonPass(t, attackResults)
 }
 
 // TestCompareAzure loads Azure sample data into both backends and compares results.
@@ -529,7 +542,7 @@ func TestCompareAzure(t *testing.T) {
 
 	t.Log("=== Comparing Azure preset queries ===")
 	results := compareQueries(ctx, t, kgliteDB, neo4jDB, azurePresetQueries)
-	reportComparison(t, results)
+	requireComparisonPass(t, results)
 
 	attackQueries := make([]presetQuery, 0, len(azureAttackPathEdges))
 	for _, e := range azureAttackPathEdges {
@@ -540,5 +553,5 @@ func TestCompareAzure(t *testing.T) {
 	}
 	t.Log("=== Comparing Azure attack path edges ===")
 	attackResults := compareQueries(ctx, t, kgliteDB, neo4jDB, attackQueries)
-	reportComparison(t, attackResults)
+	requireComparisonPass(t, attackResults)
 }

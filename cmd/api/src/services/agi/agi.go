@@ -72,7 +72,7 @@ type agiGetter interface {
 }
 
 func RunAssetGroupIsolationCollections(ctx context.Context, db agiGetter, graphDB graph.Database, nodeLabelFn func(graphschema.ValidPrimaryKinds, *graph.Node) string) error {
-	defer measure.ContextMeasureWithThreshold(ctx, slog.LevelInfo, "Asset Group Isolation Collections")()
+	defer measure.ContextMeasureWithThreshold(ctx, slog.LevelDebug, "Asset Group Isolation Collections")()
 
 	if assetGroups, err := db.GetAllAssetGroups(ctx, "", model.SQLFilter{}); err != nil {
 		return err

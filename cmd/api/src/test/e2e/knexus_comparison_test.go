@@ -283,7 +283,7 @@ func TestCompareKNexus(t *testing.T) {
 	// Compare preset queries
 	t.Log("=== Comparing k-nexus-global preset queries ===")
 	results := compareQueries(ctx, t, kgliteDB, neo4jDB, knexusPresetQueries)
-	reportComparison(t, results)
+	requireComparisonPass(t, results)
 
 	// Compare attack path edges
 	attackQueries := make([]presetQuery, 0, len(knexusAttackPathEdges))
@@ -295,7 +295,7 @@ func TestCompareKNexus(t *testing.T) {
 	}
 	t.Log("=== Comparing k-nexus-global attack path edges ===")
 	attackResults := compareQueries(ctx, t, kgliteDB, neo4jDB, attackQueries)
-	reportComparison(t, attackResults)
+	requireComparisonPass(t, attackResults)
 }
 
 // loadQueriesFromZip extracts presetQuery entries from the 08-queries/ directory
@@ -461,7 +461,7 @@ func TestCompareKNexusOpenGraph(t *testing.T) {
 		}
 		t.Logf("=== Comparing %s queries (%d of %d) ===", category, len(compatible), len(queries))
 		results := compareQueries(ctx, t, kgliteDB, neo4jDB, compatible)
-		reportComparison(t, results)
+		requireComparisonPass(t, results)
 
 		for _, r := range results {
 			switch {

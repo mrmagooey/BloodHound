@@ -269,7 +269,7 @@ func resolveIngestibleEndpoint(tx graph.Transaction, ingestEntry ein.IngestibleE
 // It returns the fully resolved list of relationships and any aggregated errors encountered
 // during the worker execution. This function logs its duration and operation details to the context logger.
 func ResolveAll(ctx context.Context, endpointResolver *Resolver, ingestEntries []ein.IngestibleRelationship) ([]ein.IngestibleRelationship, error) {
-	defer measure.ContextLogAndMeasure(ctx, slog.LevelInfo, "ResolveAll")()
+	defer measure.ContextLogAndMeasure(ctx, slog.LevelDebug, "ResolveAll")()
 
 	// Start a new parallel resolution
 	endpointResolver.Start(ctx, analysis.MaximumDatabaseParallelWorkers)

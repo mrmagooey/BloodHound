@@ -30,7 +30,7 @@ import (
 )
 
 func SaveDataQuality(ctx context.Context, db database.DataQualityData, graphDB graph.Database) error {
-	slog.InfoContext(
+	slog.DebugContext(
 		ctx,
 		"Started Data Quality Stats Collection",
 		attr.Namespace("analysis"),
@@ -39,7 +39,7 @@ func SaveDataQuality(ctx context.Context, db database.DataQualityData, graphDB g
 	)
 	defer measure.ContextMeasure(
 		ctx,
-		slog.LevelInfo,
+		slog.LevelDebug,
 		"Completed Data Quality Stats Collection",
 		attr.Namespace("analysis"),
 		attr.Function("SaveDataQuality"),

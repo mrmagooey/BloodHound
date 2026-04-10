@@ -74,7 +74,7 @@ func PrimaryNodeKind(validPrimaryKinds ValidPrimaryKinds, kinds graph.Kinds) gra
 		baseKind   = resultKind
 	)
 
-	if validPrimaryKinds == nil {
+	if validPrimaryKinds == nil || len(validPrimaryKinds) == 0 {
 		validPrimaryKinds = ValidKinds
 	}
 

@@ -32,7 +32,7 @@ import (
 func Post(ctx context.Context, db graph.Database, adcsEnabled, citrixEnabled, ntlmEnabled bool, compositionCounter *analysis.CompositionCounter) (*analysis.AtomicPostProcessingStats, error) {
 	defer measure.ContextLogAndMeasure(
 		ctx,
-		slog.LevelInfo,
+		slog.LevelDebug,
 		"Active Directory Post Processing",
 		attr.Namespace("analysis"),
 		attr.Function("Post"),

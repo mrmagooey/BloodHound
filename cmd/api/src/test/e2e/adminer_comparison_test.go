@@ -287,7 +287,7 @@ func TestCompareADMiner(t *testing.T) {
 	// Compare AD_Miner AD queries
 	t.Log("=== Comparing AD_Miner AD queries ===")
 	results := compareQueries(ctx, t, kgliteDB, neo4jDB, adminerADQueries)
-	reportComparison(t, results)
+	requireComparisonPass(t, results)
 }
 
 // TestCompareADMinerAzure loads Azure sample data into both kglite and Neo4j,
@@ -352,7 +352,7 @@ func TestCompareADMinerAzure(t *testing.T) {
 	// Compare AD_Miner Azure queries
 	t.Log("=== Comparing AD_Miner Azure queries ===")
 	results := compareQueries(ctx, t, kgliteDB, neo4jDB, adminerAzureQueries)
-	reportComparison(t, results)
+	requireComparisonPass(t, results)
 }
 
 // TestCompareADMinerCombined loads both AD and Azure sample data, then runs
@@ -397,7 +397,7 @@ func TestCompareADMinerCombined(t *testing.T) {
 
 	t.Logf("=== Comparing all AD_Miner queries (%d total) ===", len(allQueries))
 	results := compareQueries(ctx, t, kgliteDB, neo4jDB, allQueries)
-	reportComparison(t, results)
+	requireComparisonPass(t, results)
 
 	// Summary
 	var matches, mismatches, errors int

@@ -33,7 +33,7 @@ import (
 func Post(ctx context.Context, db graph.Database) (*analysis.AtomicPostProcessingStats, error) {
 	defer measure.ContextLogAndMeasure(
 		ctx,
-		slog.LevelInfo,
+		slog.LevelDebug,
 		"Azure Post Processing",
 		attr.Namespace("analysis"),
 		attr.Function("Post"),

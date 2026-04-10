@@ -623,7 +623,7 @@ func SelectNodes(ctx context.Context, db database.Database, graphDb graph.Databa
 func selectAssetGroupNodes(ctx context.Context, db database.Database, graphDb graph.Database) []error {
 	defer measure.ContextMeasure(
 		ctx,
-		slog.LevelInfo,
+		slog.LevelDebug,
 		"Selecting agt nodes",
 		attr.Namespace("analysis"),
 		attr.Function("selectAssetGroupNodes"),
@@ -834,7 +834,7 @@ func tagAssetGroupNodesForTag(ctx context.Context, db database.Database, graphDb
 func tagAssetGroupNodes(ctx context.Context, db database.Database, graphDb graph.Database, additionalFilters ...graph.Criteria) []error {
 	defer measure.ContextMeasure(
 		ctx,
-		slog.LevelInfo,
+		slog.LevelDebug,
 		"Tagging asset group nodes",
 		attr.Namespace("analysis"),
 		attr.Function("tagAssetGroupNodes"),
@@ -956,7 +956,7 @@ func ClearAssetGroupTagNodeSet(ctx context.Context, graphDb graph.Database, asse
 func ClearAssetGroupHistoryRecords(ctx context.Context, db database.Database) {
 	defer measure.ContextMeasure(
 		ctx,
-		slog.LevelInfo,
+		slog.LevelDebug,
 		"Clear Asset Group History",
 		attr.Namespace("analysis"),
 		attr.Function("ClearAssetGroupHistoryRecords"),
@@ -1036,7 +1036,7 @@ func migrateCustomObjectIdSelectorNames(ctx context.Context, db database.Databas
 func TagAssetGroupsAndTierZero(ctx context.Context, db database.Database, graphDb graph.Database, additionalFilters ...graph.Criteria) []error {
 	defer measure.ContextLogAndMeasure(
 		ctx,
-		slog.LevelInfo,
+		slog.LevelDebug,
 		"Tag Asset Groups and Tier Zero",
 		attr.Namespace("analysis"),
 		attr.Function("TagAssetGroupsAndTierZero"),

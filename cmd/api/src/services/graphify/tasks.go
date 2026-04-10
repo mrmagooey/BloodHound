@@ -301,7 +301,7 @@ func (s *GraphifyService) ProcessTasks(updateJob UpdateJobFunc) {
 	}
 
 	start := time.Now()
-	slog.InfoContext(s.ctx,
+	slog.DebugContext(s.ctx,
 		"Ingest run starting",
 		slog.Int("task_count", len(tasks)),
 	)
@@ -354,7 +354,7 @@ func (s *GraphifyService) ProcessTasks(updateJob UpdateJobFunc) {
 		s.clearFileTask(task)
 	}
 
-	slog.InfoContext(s.ctx,
+	slog.DebugContext(s.ctx,
 		"Ingest run finished",
 		slog.Duration("duration", time.Since(start)),
 		slog.Int("task_count", len(tasks)),
