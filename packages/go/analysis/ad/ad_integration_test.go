@@ -34,6 +34,7 @@ import (
 
 	adAnalysis "github.com/specterops/bloodhound/packages/go/analysis/ad"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -545,3 +546,153 @@ func generateWellKnownNode(
 		}),
 	}
 }
+
+// ─── OPT-23 integration tests ──────────────────────────────────────────────────
+
+// TestFetchWellKnownTierZeroEntities_AllSuffixesReturned verifies that the combined
+// OR query (OPT-23) returns a node for every tier-zero SID suffix that exists in the
+// database, matching what the original per-suffix loop would have returned.
+func TestFetchWellKnownTierZeroEntities_AllSuffixesReturned(t *testing.T) {
+	ctx := context.Background()
+	graphDB := integration.OpenGraphDB(t, graphschema.DefaultGraphSchema())
+	defer graphDB.Close(ctx)
+
+	const (
+		domainName = "OPTZERO.LOCAL"
+		domainSID  = "S-1-5-21-100000001-200000001-300000001"
+	)
+
+	// Create a domain node.
+	var domainNode *graph.Node
+	require.NoError(t, graphDB.WriteTransaction(ctx, func(tx graph.Transaction) error {
+		var err error
+		domainNode, err = tx.CreateNode(graph.AsProperties(graph.PropertyMap{
+			common.Collected: true,
+			common.Name:      domainName,
+			ad.DomainSID:     domainSID,
+			ad.DomainFQDN:    domainName,
+		}), ad.Entity, ad.Domain)
+		return err
+	}))
+	require.NotNil(t, domainNode)
+
+	// Create one Group node per tier-zero SID suffix.
+	suffixes := adAnalysis.TierZeroWellKnownSIDSuffixes()
+	createdNodeIDs := make(map[graph.ID]struct{}, len(suffixes))
+
+	require.NoError(t, graphDB.WriteTransaction(ctx, func(tx graph.Transaction) error {
+		for _, suffix := range suffixes {
+			node, err := tx.CreateNode(graph.AsProperties(graph.PropertyMap{
+				common.ObjectID: domainSID + suffix,
+				ad.DomainSID:    domainSID,
+			}), ad.Entity, ad.Group)
+			if err != nil {
+				return err
+			}
+			createdNodeIDs[node.ID] = struct{}{}
+		}
+		return nil
+	}))
+
+	// Add an irrelevant node from a different domain — must NOT be returned.
+	require.NoError(t, graphDB.WriteTransaction(ctx, func(tx graph.Transaction) error {
+		_, err := tx.CreateNode(graph.AsProperties(graph.PropertyMap{
+			common.ObjectID: "S-1-5-21-999999999-999999999-999999999" + suffixes[0],
+			ad.DomainSID:    "S-1-5-21-999999999-999999999-999999999",
+		}), ad.Entity, ad.Group)
+		return err
+	}))
+
+	// Add an AdminSDHolder Container for this domain.
+	var adminSDHolderID graph.ID
+	require.NoError(t, graphDB.WriteTransaction(ctx, func(tx graph.Transaction) error {
+		node, err := tx.CreateNode(graph.AsProperties(graph.PropertyMap{
+			common.ObjectID:      domainSID + "-ADMINSDHOLDER",
+			ad.DistinguishedName: adAnalysis.AdminSDHolderDNPrefix + "DC=OPTZERO,DC=LOCAL",
+			ad.DomainSID:         domainSID,
+		}), ad.Entity, ad.Container)
+		if err != nil {
+			return err
+		}
+		adminSDHolderID = node.ID
+		return nil
+	}))
+
+	// Exercise the function under test.
+	result, err := adAnalysis.FetchWellKnownTierZeroEntities(ctx, graphDB, domainSID)
+	require.NoError(t, err)
+
+	// All tier-zero SID-suffix nodes must be present.
+	for id := range createdNodeIDs {
+		assert.True(t, result.ContainsID(id), "expected node %d to be in result", id)
+	}
+	// AdminSDHolder must be present.
+	assert.True(t, result.ContainsID(adminSDHolderID), "expected AdminSDHolder node in result")
+
+	// Total count: one per suffix + AdminSDHolder.
+	assert.Equal(t, len(suffixes)+1, result.Len(),
+		"result should contain exactly one node per suffix plus AdminSDHolder")
+}
+
+// TestFetchWellKnownTierZeroEntities_ExcludesWrongDomain verifies that nodes
+// belonging to a different domain are not returned even if they share SID suffixes.
+func TestFetchWellKnownTierZeroEntities_ExcludesWrongDomain(t *testing.T) {
+	ctx := context.Background()
+	graphDB := integration.OpenGraphDB(t, graphschema.DefaultGraphSchema())
+	defer graphDB.Close(ctx)
+
+	const targetDomainSID = "S-1-5-21-777000001-777000002-777000003"
+	const otherDomainSID  = "S-1-5-21-888000001-888000002-888000003"
+
+	// Create one tier-zero node in the target domain and one in another domain.
+	suffix := adAnalysis.TierZeroWellKnownSIDSuffixes()[0]
+	var targetNodeID graph.ID
+	require.NoError(t, graphDB.WriteTransaction(ctx, func(tx graph.Transaction) error {
+		target, err := tx.CreateNode(graph.AsProperties(graph.PropertyMap{
+			common.ObjectID: targetDomainSID + suffix,
+			ad.DomainSID:    targetDomainSID,
+		}), ad.Entity, ad.Group)
+		if err != nil {
+			return err
+		}
+		targetNodeID = target.ID
+
+		_, err = tx.CreateNode(graph.AsProperties(graph.PropertyMap{
+			common.ObjectID: otherDomainSID + suffix,
+			ad.DomainSID:    otherDomainSID,
+		}), ad.Entity, ad.Group)
+		return err
+	}))
+
+	result, err := adAnalysis.FetchWellKnownTierZeroEntities(ctx, graphDB, targetDomainSID)
+	require.NoError(t, err)
+
+	require.Equal(t, 1, result.Len(), "only the target-domain node should be returned")
+	assert.NotNil(t, result.Get(targetNodeID))
+}
+
+// TestFetchWellKnownTierZeroEntities_ExcludesNonGroupUser verifies that nodes
+// that match a SID suffix but lack Group or User kind are not returned.
+func TestFetchWellKnownTierZeroEntities_ExcludesNonGroupUser(t *testing.T) {
+	ctx := context.Background()
+	graphDB := integration.OpenGraphDB(t, graphschema.DefaultGraphSchema())
+	defer graphDB.Close(ctx)
+
+	const domainSID = "S-1-5-21-666000001-666000002-666000003"
+	suffix := adAnalysis.TierZeroWellKnownSIDSuffixes()[0]
+
+	// Create a Computer node with a matching SID — must NOT be returned.
+	require.NoError(t, graphDB.WriteTransaction(ctx, func(tx graph.Transaction) error {
+		_, err := tx.CreateNode(graph.AsProperties(graph.PropertyMap{
+			common.ObjectID: domainSID + suffix,
+			ad.DomainSID:    domainSID,
+		}), ad.Entity, ad.Computer)
+		return err
+	}))
+
+	result, err := adAnalysis.FetchWellKnownTierZeroEntities(ctx, graphDB, domainSID)
+	require.NoError(t, err)
+	assert.Equal(t, 0, result.Len(), "Computer node with tier-zero SID suffix should be excluded")
+}
+
+

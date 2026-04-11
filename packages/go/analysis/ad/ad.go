@@ -56,32 +56,43 @@ func TierZeroWellKnownSIDSuffixes() []string {
 	}
 }
 
+// buildSIDSuffixOrCriteria builds a single OR predicate that matches any of the given SID suffixes.
+func buildSIDSuffixOrCriteria(suffixes []string) graph.Criteria {
+	predicates := make([]graph.Criteria, len(suffixes))
+	for i, suffix := range suffixes {
+		predicates[i] = query.StringEndsWith(query.NodeProperty(common.ObjectID.String()), suffix)
+	}
+	return query.Or(predicates...)
+}
+
 func FetchWellKnownTierZeroEntities(ctx context.Context, db graph.Database, domainSID string) (graph.NodeSet, error) {
 	defer measure.ContextMeasure(ctx, slog.LevelInfo, "FetchWellKnownTierZeroEntities")()
 
 	nodes := graph.NewNodeSet()
 
 	return nodes, db.ReadTransaction(ctx, func(tx graph.Transaction) error {
-		for _, wellKnownSIDSuffix := range TierZeroWellKnownSIDSuffixes() {
-			if err := tx.Nodes().Filterf(func() graph.Criteria {
-				return query.And(
-					// Make sure we have the Group or User label. This should cover the case for URA as well as filter out all the other localgroups
-					query.KindIn(query.Node(), ad.Group, ad.User),
-					query.StringEndsWith(query.NodeProperty(common.ObjectID.String()), wellKnownSIDSuffix),
-					query.Equals(query.NodeProperty(ad.DomainSID.String()), domainSID),
-				)
-			}).Fetch(func(cursor graph.Cursor[*graph.Node]) error {
-				for node := range cursor.Chan() {
-					nodes.Add(node)
-				}
-
-				return cursor.Error()
-			}); err != nil {
-				return err
+		// OPT-23: Issue a single query with all SID suffixes OR'd together instead of
+		// one query per suffix (was 10 separate full-scan queries).
+		sidSuffixes := TierZeroWellKnownSIDSuffixes()
+		if err := tx.Nodes().Filterf(func() graph.Criteria {
+			return query.And(
+				// Make sure we have the Group or User label. This should cover the case for URA as well as filter out all the other localgroups
+				query.KindIn(query.Node(), ad.Group, ad.User),
+				query.KindIn(query.Node(), ad.Entity),
+				buildSIDSuffixOrCriteria(sidSuffixes),
+				query.Equals(query.NodeProperty(ad.DomainSID.String()), domainSID),
+			)
+		}).Fetch(func(cursor graph.Cursor[*graph.Node]) error {
+			for node := range cursor.Chan() {
+				nodes.Add(node)
 			}
+			return cursor.Error()
+		}); err != nil {
+			return err
 		}
 
-		// AdminSDHolder
+		// AdminSDHolder: kept as a separate query since it uses different node kind and
+		// property criteria that cannot be folded into the SID suffix OR above.
 		if err := tx.Nodes().Filterf(func() graph.Criteria {
 			return query.And(
 				query.KindIn(query.Node(), ad.Container),
