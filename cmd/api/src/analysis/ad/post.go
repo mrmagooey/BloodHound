@@ -54,6 +54,8 @@ func Post(ctx context.Context, db graph.Database, adcsEnabled, citrixEnabled, nt
 		return &aggregateStats, err
 	} else if localGroupData, err := adAnalysis.FetchLocalGroupData(ctx, db); err != nil {
 		return &aggregateStats, err
+	} else if domainNodes, err := adAnalysis.FetchCollectedDomainNodes(ctx, db); err != nil {
+		return &aggregateStats, err
 	} else {
 		aggregateStats.Merge(deleteTransitEdgesStats)
 
@@ -66,7 +68,7 @@ func Post(ctx context.Context, db graph.Database, adcsEnabled, citrixEnabled, nt
 		eg, egCtx := errgroup.WithContext(ctx)
 
 		eg.Go(func() error {
-			stats, err := adAnalysis.PostDCSync(egCtx, db, localGroupData)
+			stats, err := adAnalysis.PostDCSync(egCtx, db, localGroupData, domainNodes)
 			if err != nil {
 				return err
 			}
@@ -77,7 +79,7 @@ func Post(ctx context.Context, db graph.Database, adcsEnabled, citrixEnabled, nt
 		})
 
 		eg.Go(func() error {
-			stats, err := adAnalysis.PostProtectAdminGroups(egCtx, db)
+			stats, err := adAnalysis.PostProtectAdminGroups(egCtx, db, domainNodes)
 			if err != nil {
 				return err
 			}
@@ -88,7 +90,7 @@ func Post(ctx context.Context, db graph.Database, adcsEnabled, citrixEnabled, nt
 		})
 
 		eg.Go(func() error {
-			stats, err := adAnalysis.PostSyncLAPSPassword(egCtx, db, localGroupData)
+			stats, err := adAnalysis.PostSyncLAPSPassword(egCtx, db, localGroupData, domainNodes)
 			if err != nil {
 				return err
 			}
@@ -99,7 +101,7 @@ func Post(ctx context.Context, db graph.Database, adcsEnabled, citrixEnabled, nt
 		})
 
 		eg.Go(func() error {
-			stats, err := adAnalysis.PostHasTrustKeys(egCtx, db)
+			stats, err := adAnalysis.PostHasTrustKeys(egCtx, db, domainNodes)
 			if err != nil {
 				return err
 			}

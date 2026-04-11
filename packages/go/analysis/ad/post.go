@@ -36,7 +36,7 @@ import (
 	"github.com/specterops/dawgs/util/channels"
 )
 
-func PostSyncLAPSPassword(ctx context.Context, db graph.Database, localGroupData *LocalGroupData) (*analysis.AtomicPostProcessingStats, error) {
+func PostSyncLAPSPassword(ctx context.Context, db graph.Database, localGroupData *LocalGroupData, domainNodes []*graph.Node) (*analysis.AtomicPostProcessingStats, error) {
 	defer measure.ContextLogAndMeasure(
 		ctx,
 		slog.LevelInfo,
@@ -46,9 +46,7 @@ func PostSyncLAPSPassword(ctx context.Context, db graph.Database, localGroupData
 		attr.Scope("process"),
 	)()
 
-	if domainNodes, err := fetchCollectedDomainNodes(ctx, db); err != nil {
-		return &analysis.AtomicPostProcessingStats{}, err
-	} else {
+	{
 		operation := analysis.NewPostRelationshipOperation(ctx, db, "SyncLAPSPassword Post Processing")
 		for _, domain := range domainNodes {
 			innerDomain := domain
@@ -80,7 +78,7 @@ func PostSyncLAPSPassword(ctx context.Context, db graph.Database, localGroupData
 	}
 }
 
-func PostDCSync(ctx context.Context, db graph.Database, localGroupData *LocalGroupData) (*analysis.AtomicPostProcessingStats, error) {
+func PostDCSync(ctx context.Context, db graph.Database, localGroupData *LocalGroupData, domainNodes []*graph.Node) (*analysis.AtomicPostProcessingStats, error) {
 	defer measure.ContextLogAndMeasure(
 		ctx,
 		slog.LevelInfo,
@@ -90,9 +88,7 @@ func PostDCSync(ctx context.Context, db graph.Database, localGroupData *LocalGro
 		attr.Scope("process"),
 	)()
 
-	if domainNodes, err := fetchCollectedDomainNodes(ctx, db); err != nil {
-		return &analysis.AtomicPostProcessingStats{}, err
-	} else {
+	{
 		operation := analysis.NewPostRelationshipOperation(ctx, db, "DCSync Post Processing")
 
 		for _, domain := range domainNodes {
@@ -121,7 +117,7 @@ func PostDCSync(ctx context.Context, db graph.Database, localGroupData *LocalGro
 	}
 }
 
-func PostProtectAdminGroups(ctx context.Context, db graph.Database) (*analysis.AtomicPostProcessingStats, error) {
+func PostProtectAdminGroups(ctx context.Context, db graph.Database, domainNodes []*graph.Node) (*analysis.AtomicPostProcessingStats, error) {
 	defer measure.ContextLogAndMeasure(
 		ctx,
 		slog.LevelInfo,
@@ -130,11 +126,6 @@ func PostProtectAdminGroups(ctx context.Context, db graph.Database) (*analysis.A
 		attr.Function("PostProtectAdminGroups"),
 		attr.Scope("process"),
 	)()
-
-	domainNodes, err := fetchCollectedDomainNodes(ctx, db)
-	if err != nil {
-		return &analysis.AtomicPostProcessingStats{}, err
-	}
 
 	operation := analysis.NewPostRelationshipOperation(ctx, db, "ProtectAdminGroups Post Processing")
 
@@ -168,7 +159,7 @@ func PostProtectAdminGroups(ctx context.Context, db graph.Database) (*analysis.A
 	return &operation.Stats, operation.Done()
 }
 
-func PostHasTrustKeys(ctx context.Context, db graph.Database) (*analysis.AtomicPostProcessingStats, error) {
+func PostHasTrustKeys(ctx context.Context, db graph.Database, domainNodes []*graph.Node) (*analysis.AtomicPostProcessingStats, error) {
 	defer measure.ContextLogAndMeasure(
 		ctx,
 		slog.LevelInfo,
@@ -178,9 +169,7 @@ func PostHasTrustKeys(ctx context.Context, db graph.Database) (*analysis.AtomicP
 		attr.Scope("process"),
 	)()
 
-	if domainNodes, err := fetchCollectedDomainNodes(ctx, db); err != nil {
-		return &analysis.AtomicPostProcessingStats{}, err
-	} else {
+	{
 		operation := analysis.NewPostRelationshipOperation(ctx, db, "HasTrustKeys Post Processing")
 		if err := operation.Operation.SubmitReader(func(ctx context.Context, tx graph.Transaction, outC chan<- analysis.CreatePostRelationshipJob) error {
 			for _, domain := range domainNodes {
@@ -284,7 +273,9 @@ func FetchNodesByKind(ctx context.Context, db graph.Database, kinds ...graph.Kin
 	})
 }
 
-func fetchCollectedDomainNodes(ctx context.Context, db graph.Database) ([]*graph.Node, error) {
+// FetchCollectedDomainNodes fetches all Domain nodes where Collected == true.
+// Callers that need this data in multiple post-processing functions should fetch once and share the result.
+func FetchCollectedDomainNodes(ctx context.Context, db graph.Database) ([]*graph.Node, error) {
 	var nodes []*graph.Node
 	return nodes, db.ReadTransaction(ctx, func(tx graph.Transaction) error {
 		var err error

@@ -1143,7 +1143,9 @@ func TestSyncLAPSPassword(t *testing.T) {
 	}, func(harness integration.HarnessDetails, db graph.Database) {
 		if localGroupData, err := adAnalysis.FetchLocalGroupData(testContext.Context(), db); err != nil {
 			t.Fatalf("error expanding groups in integration test; %v", err)
-		} else if _, err := adAnalysis.PostSyncLAPSPassword(testContext.Context(), db, localGroupData); err != nil {
+		} else if domainNodes, err := adAnalysis.FetchCollectedDomainNodes(testContext.Context(), db); err != nil {
+			t.Fatalf("error fetching domain nodes in integration test; %v", err)
+		} else if _, err := adAnalysis.PostSyncLAPSPassword(testContext.Context(), db, localGroupData, domainNodes); err != nil {
 			t.Fatalf("error creating SyncLAPSPassword edges in integration test; %v", err)
 		} else {
 			db.ReadTransaction(context.Background(), func(tx graph.Transaction) error {
@@ -1174,7 +1176,9 @@ func TestDCSync(t *testing.T) {
 	}, func(harness integration.HarnessDetails, db graph.Database) {
 		if localGroupData, err := adAnalysis.FetchLocalGroupData(testContext.Context(), db); err != nil {
 			t.Fatalf("error expanding groups in integration test; %v", err)
-		} else if _, err := adAnalysis.PostDCSync(testContext.Context(), db, localGroupData); err != nil {
+		} else if domainNodes, err := adAnalysis.FetchCollectedDomainNodes(testContext.Context(), db); err != nil {
+			t.Fatalf("error fetching domain nodes in integration test; %v", err)
+		} else if _, err := adAnalysis.PostDCSync(testContext.Context(), db, localGroupData, domainNodes); err != nil {
 			t.Fatalf("error creating DCSync edges in integration test; %v", err)
 		} else {
 			db.ReadTransaction(context.Background(), func(tx graph.Transaction) error {
@@ -1586,8 +1590,11 @@ func TestHasTrustKeys(t *testing.T) {
 	err = arrows.WriteGraphToDatabase(graphDB, &fixture)
 	require.NoError(t, err)
 
+	domainNodes, err := adAnalysis.FetchCollectedDomainNodes(testCtx.Context(), graphDB)
+	require.NoError(t, err)
+
 	err = graphDB.ReadTransaction(testCtx.Context(), func(tx graph.Transaction) error {
-		if _, err := adAnalysis.PostHasTrustKeys(testCtx.Context(), graphDB); err != nil {
+		if _, err := adAnalysis.PostHasTrustKeys(testCtx.Context(), graphDB, domainNodes); err != nil {
 			t.Fatalf("error creating HasTrustKeys edges in integration test; %v", err)
 		} else {
 			if err = graphDB.ReadTransaction(context.Background(), func(tx graph.Transaction) error {
@@ -1662,8 +1669,11 @@ func TestProtectAdminGroups(t *testing.T) {
 	err = arrows.WriteGraphToDatabase(graphDB, &fixture)
 	require.NoError(t, err)
 
+	domainNodes, err := adAnalysis.FetchCollectedDomainNodes(testCtx.Context(), graphDB)
+	require.NoError(t, err)
+
 	err = graphDB.ReadTransaction(testCtx.Context(), func(tx graph.Transaction) error {
-		if _, err := adAnalysis.PostProtectAdminGroups(testCtx.Context(), graphDB); err != nil {
+		if _, err := adAnalysis.PostProtectAdminGroups(testCtx.Context(), graphDB, domainNodes); err != nil {
 			t.Fatalf("error creating ProtectAdminGroups edges in integration test; %v", err)
 		} else {
 			if err = graphDB.ReadTransaction(context.Background(), func(tx graph.Transaction) error {
