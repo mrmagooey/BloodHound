@@ -21,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"sync"
 
 	"github.com/specterops/bloodhound/cmd/api/src/analysis/ad"
 	"github.com/specterops/bloodhound/cmd/api/src/analysis/azure"
@@ -38,6 +39,31 @@ var (
 	ErrAnalysisPartiallyCompleted = errors.New("analysis partially completed")
 )
 
+// postFn is the function signature shared by ad.Post and azure.Post wrappers used
+// in runPostProcessingConcurrently.
+type postFn func(ctx context.Context) (*analysis.AtomicPostProcessingStats, error)
+
+// runPostProcessingConcurrently runs adPost and azurePost in separate goroutines and
+// waits for both to complete. Errors are returned independently so that a failure in
+// one post-processor does not suppress the result of the other.
+func runPostProcessingConcurrently(ctx context.Context, adPost, azurePost postFn) (adStats, azureStats *analysis.AtomicPostProcessingStats, adErr, azureErr error) {
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	go func() {
+		defer wg.Done()
+		adStats, adErr = adPost(ctx)
+	}()
+
+	go func() {
+		defer wg.Done()
+		azureStats, azureErr = azurePost(ctx)
+	}()
+
+	wg.Wait()
+	return
+}
+
 // TODO Cleanup tieringEnabled after Tiering GA
 func RunAnalysisOperations(ctx context.Context, db database.Database, graphDB graph.Database, _ config.Configuration) error {
 	var (
@@ -54,22 +80,46 @@ func RunAnalysisOperations(ctx context.Context, db database.Database, graphDB gr
 	)
 
 	// TODO: Cleanup #ADCSFeatureFlag after full launch.
-	if adcsFlag, err := db.GetFlagByKey(ctx, appcfg.FeatureAdcs); err != nil {
+	// Fetch feature flags sequentially before launching concurrent post-processing.
+	adcsFlag, err := db.GetFlagByKey(ctx, appcfg.FeatureAdcs)
+	if err != nil {
 		collectedErrors = append(collectedErrors, fmt.Errorf("error retrieving ADCS feature flag: %w", err))
-	} else if ntlmFlag, err := db.GetFlagByKey(ctx, appcfg.FeatureNTLMPostProcessing); err != nil {
-		collectedErrors = append(collectedErrors, fmt.Errorf("error retrieving NTLM Post Processing feature flag: %w", err))
-	} else if stats, err := ad.Post(ctx, graphDB, adcsFlag.Enabled, appcfg.GetCitrixRDPSupport(ctx, db), ntlmFlag.Enabled, &compositionIdCounter); err != nil {
-		collectedErrors = append(collectedErrors, fmt.Errorf("error during ad post: %w", err))
 		adFailed = true
-	} else {
-		stats.LogStats()
 	}
 
-	if stats, err := azure.Post(ctx, graphDB); err != nil {
-		collectedErrors = append(collectedErrors, fmt.Errorf("error during azure post: %w", err))
-		azureFailed = true
-	} else {
-		stats.LogStats()
+	ntlmFlag, err := db.GetFlagByKey(ctx, appcfg.FeatureNTLMPostProcessing)
+	if err != nil {
+		collectedErrors = append(collectedErrors, fmt.Errorf("error retrieving NTLM Post Processing feature flag: %w", err))
+		adFailed = true
+	}
+
+	// Run AD and Azure post-processing concurrently — they operate on non-overlapping
+	// entity kinds and relationship types, and kglite's Mutex serialises any concurrent
+	// writers safely. Both goroutines always run to completion so that a failure in one
+	// does not silently suppress the other's work.
+	if !adFailed {
+		adPost := func(ctx context.Context) (*analysis.AtomicPostProcessingStats, error) {
+			return ad.Post(ctx, graphDB, adcsFlag.Enabled, appcfg.GetCitrixRDPSupport(ctx, db), ntlmFlag.Enabled, &compositionIdCounter)
+		}
+		azurePost := func(ctx context.Context) (*analysis.AtomicPostProcessingStats, error) {
+			return azure.Post(ctx, graphDB)
+		}
+
+		adStats, azureStats, adErr, azureErr := runPostProcessingConcurrently(ctx, adPost, azurePost)
+
+		if adErr != nil {
+			collectedErrors = append(collectedErrors, fmt.Errorf("error during ad post: %w", adErr))
+			adFailed = true
+		} else {
+			adStats.LogStats()
+		}
+
+		if azureErr != nil {
+			collectedErrors = append(collectedErrors, fmt.Errorf("error during azure post: %w", azureErr))
+			azureFailed = true
+		} else {
+			azureStats.LogStats()
+		}
 	}
 
 	if errs := TagAssetGroupsAndTierZero(ctx, db, graphDB); len(errs) > 0 {
