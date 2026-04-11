@@ -462,6 +462,9 @@ func (t *Transaction) Commit() error {
 }
 
 // Raw executes a raw Cypher query and returns a graph.Result.
+// Conversion of JSON-decoded kglite values to DAWGS types is done lazily in
+// kgliteResult.Values() the first time each row is accessed. This avoids a
+// redundant full-pass over every row at return time (OPT-19).
 func (t *Transaction) Raw(cypher string, parameters map[string]any) graph.Result {
 	rewritten := rewriteForKglite(cypher, parameters)
 	start := time.Now()
@@ -471,12 +474,6 @@ func (t *Transaction) Raw(cypher string, parameters map[string]any) graph.Result
 	}
 	if err != nil {
 		return newErrorResult(err)
-	}
-	// Convert JSON values in rows to DAWGS types
-	for i, row := range result.Rows {
-		for j, v := range row {
-			result.Rows[i][j] = convertValue(v)
-		}
 	}
 	return newResult(result)
 }
