@@ -509,6 +509,110 @@ func TestConvertValuePathStringShort(t *testing.T) {
 	}
 }
 
+// ─── OPT-24 prefix-check correctness ─────────────────────────────────────────
+
+// TestConvertValuePathPrefixExact verifies that the 9-byte {"__path" prefix
+// check correctly identifies a path string.
+func TestConvertValuePathPrefixExact(t *testing.T) {
+	pathJSON := `{"__path":true,"nodes":[],"edges":[]}`
+	got := convertValue(pathJSON)
+	if _, ok := got.(*graph.Path); !ok {
+		t.Fatalf("expected *graph.Path, got %T", got)
+	}
+}
+
+// TestConvertValuePathPrefixWithSpaces verifies that a path JSON string with a
+// space after the opening brace does NOT match the prefix check (the path
+// encoder never emits such strings, but correctness requires no false positives).
+func TestConvertValuePathPrefixWithSpaces(t *testing.T) {
+	// { "__path": ... — note the space: this should NOT be decoded as a path
+	// by the prefix check (it doesn't match the 9-byte prefix {"__path").
+	// It falls through to return v as-is (string).
+	notPath := `{ "__path":true}`
+	got := convertValue(notPath)
+	if _, ok := got.(*graph.Path); ok {
+		t.Fatalf("expected string pass-through, got *graph.Path (false positive)")
+	}
+	if got != notPath {
+		t.Fatalf("expected original string, got %v", got)
+	}
+}
+
+// TestConvertValueJSONObjectNotPath verifies that a plain JSON object string
+// that starts with { but is NOT a path is returned as a string (no unmarshal).
+func TestConvertValueJSONObjectNotPath(t *testing.T) {
+	// A JSON object that starts with {"foo": ...} — no __path key
+	notPath := `{"foo":"bar","baz":42}`
+	got := convertValue(notPath)
+	if s, ok := got.(string); !ok || s != notPath {
+		t.Fatalf("expected string pass-through for non-path JSON object, got %T(%v)", got, got)
+	}
+}
+
+// TestConvertValueJSONObjectStartingWithDoubleUnderscore verifies that a
+// JSON object whose first key starts with __ but is NOT __path is not
+// treated as a path.
+func TestConvertValueJSONObjectNotPathDoubleUnderscore(t *testing.T) {
+	notPath := `{"__other":true,"nodes":[]}`
+	got := convertValue(notPath)
+	if _, ok := got.(*graph.Path); ok {
+		t.Fatalf("expected string pass-through, got *graph.Path (false positive for __other key)")
+	}
+	if got != notPath {
+		t.Fatalf("expected original string, got %v", got)
+	}
+}
+
+// TestConvertValuePathPrefixTooShort verifies that strings shorter than the
+// 9-byte path prefix are returned as-is without attempting unmarshal.
+func TestConvertValuePathPrefixTooShort(t *testing.T) {
+	// Only 8 chars starting with {; shorter than the 9-byte prefix
+	tooShort := `{"__pat`
+	got := convertValue(tooShort)
+	if got != tooShort {
+		t.Fatalf("expected raw string for too-short prefix, got %v", got)
+	}
+}
+
+// TestConvertValueArrayEmpty verifies that an empty JSON array string is
+// correctly decoded.
+func TestConvertValueArrayEmpty(t *testing.T) {
+	got := convertValue(`[]`)
+	arr, ok := got.([]interface{})
+	if !ok {
+		t.Fatalf("expected []interface{} for empty array, got %T", got)
+	}
+	if len(arr) != 0 {
+		t.Fatalf("expected empty array, got %v", arr)
+	}
+}
+
+// TestConvertValueArrayStrings verifies that a JSON-encoded array of strings
+// is correctly decoded by convertValue (top-level array result case).
+func TestConvertValueArrayStrings(t *testing.T) {
+	got := convertValue(`["User","Base","Entity"]`)
+	arr, ok := got.([]interface{})
+	if !ok {
+		t.Fatalf("expected []interface{}, got %T", got)
+	}
+	if len(arr) != 3 {
+		t.Fatalf("expected 3 elements, got %d", len(arr))
+	}
+	if arr[0] != "User" || arr[1] != "Base" || arr[2] != "Entity" {
+		t.Fatalf("unexpected array contents: %v", arr)
+	}
+}
+
+// TestConvertValueArrayInvalidJSON verifies that a string starting with [
+// that is not valid JSON is returned as-is.
+func TestConvertValueArrayInvalidJSON(t *testing.T) {
+	notArray := "[not valid json"
+	got := convertValue(notArray)
+	if got != notArray {
+		t.Fatalf("expected raw string for invalid JSON array, got %v", got)
+	}
+}
+
 func TestConvertValueSlice(t *testing.T) {
 	v := []interface{}{"a", "b"}
 	got := convertValue(v)

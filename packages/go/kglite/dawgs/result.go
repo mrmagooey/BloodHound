@@ -116,8 +116,14 @@ func convertValue(v interface{}) interface{} {
 	case []interface{}:
 		return v
 	case string:
-		// Check for path JSON encoded as string: {"__path": true, ...}
-		if len(typed) > 10 && typed[0] == '{' {
+		// Check for path JSON encoded as string.  Paths always start with the
+		// literal prefix {"__path" (9 bytes), so we can avoid a full
+		// json.Unmarshal for any other JSON-object strings (rare in practice,
+		// but avoids a speculative parse when node properties contain JSON
+		// object strings).
+		if len(typed) >= 9 && typed[0] == '{' && typed[1] == '"' && typed[2] == '_' &&
+			typed[3] == '_' && typed[4] == 'p' && typed[5] == 'a' && typed[6] == 't' &&
+			typed[7] == 'h' && typed[8] == '"' {
 			var m map[string]interface{}
 			if err := jsonUnmarshal([]byte(typed), &m); err == nil {
 				if _, isPath := m["__path"]; isPath {
@@ -125,8 +131,9 @@ func convertValue(v interface{}) interface{} {
 				}
 			}
 		}
-		// Check for JSON-encoded arrays (e.g. labels() returns '["Base", "User"]')
-		if len(typed) > 1 && typed[0] == '[' {
+		// Check for JSON-encoded arrays (e.g. labels() returns '["Base", "User"]').
+		// Minimum valid JSON array is "[]" (2 chars).
+		if len(typed) >= 2 && typed[0] == '[' {
 			var arr []interface{}
 			if err := jsonUnmarshal([]byte(typed), &arr); err == nil {
 				for i, elem := range arr {
