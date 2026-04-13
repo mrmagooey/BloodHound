@@ -1,0 +1,27 @@
+{
+  "metadata": {
+    "source_kind": "Okta"
+  },
+  "graph": {
+    "nodes": [
+      {
+        "id": "SHARED_USER_001",
+        "kinds": ["Okta_User"],
+        "properties": {
+          "name": "alice@example.com",
+          "email": "alice@example.com",
+          "enabled": true
+        }
+      },
+      {
+        "id": "OKTA_ONLY_001",
+        "kinds": ["Okta_User"],
+        "properties": {
+          "name": "bob@example.com",
+          "email": "bob@example.com"
+        }
+      }
+    ],
+    "edges": []
+  }
+}

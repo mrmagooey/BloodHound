@@ -1,4 +1,4 @@
-.PHONY: init kglite ui build build-windows test test-quick test-rust test-comparison test-adminer test-knexus docker clean
+.PHONY: init kglite ui build build-windows test test-quick test-rust test-comparison test-adminer test-knexus golden-generate golden-test docker clean
 
 ## Initialize kglite submodule (run once after clone)
 init:
@@ -49,6 +49,14 @@ test-adminer: kglite
 ## Run k-nexus-global comparison tests against Neo4j
 test-knexus: kglite
 	go test -v -tags 'e2e comparison' -timeout 30m -run TestCompareKNexus ./cmd/api/src/test/e2e/
+
+## Generate golden files from Neo4j (requires: docker compose -f docker-compose.testing.yml up -d)
+golden-generate: kglite
+	go test -v -tags 'e2e comparison' -timeout 30m -run 'TestGenerateGolden' ./cmd/api/src/test/e2e/
+
+## Run golden comparison tests (kglite vs golden files, no Neo4j needed)
+golden-test: kglite
+	go test -v -tags e2e -timeout 30m -run 'TestGolden' ./cmd/api/src/test/e2e/
 
 ## Build Docker container
 docker:

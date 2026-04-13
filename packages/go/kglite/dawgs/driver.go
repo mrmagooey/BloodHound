@@ -33,6 +33,7 @@ type Driver struct {
 	graphPath      string
 	writeFlushSize int
 	batchWriteSize int
+	oidToKind      map[string]string // objectid -> first-seen identity kind (persists across BatchOperations)
 }
 
 // Open opens or creates a kglite graph database at the given file path.

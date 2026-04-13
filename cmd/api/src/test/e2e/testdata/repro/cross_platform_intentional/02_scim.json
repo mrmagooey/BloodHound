@@ -1,0 +1,30 @@
+{
+  "metadata": {
+    "source_kind": "SCIM"
+  },
+  "graph": {
+    "nodes": [
+      {
+        "id": "SCIM_NODE_001",
+        "kinds": ["SCIM_User"],
+        "properties": {
+          "displayName": "Alice SCIM",
+          "userName": "alice@example.com"
+        }
+      }
+    ],
+    "edges": [
+      {
+        "kind": "SCIM_Provisioned",
+        "start": {"value": "SHARED_USER_001"},
+        "end": {"value": "SCIM_NODE_001"},
+        "properties": {"traversable": true}
+      },
+      {
+        "kind": "SCIM_MemberOf",
+        "start": {"value": "SCIM_NODE_001"},
+        "end": {"value": "SCIM_GROUP_001"}
+      }
+    ]
+  }
+}

@@ -1,0 +1,39 @@
+{
+  "metadata": {
+    "source_kind": "SCIM"
+  },
+  "graph": {
+    "nodes": [
+      {
+        "id": "SCIM_ID_AAA",
+        "kinds": ["SCIM_User"],
+        "properties": {
+          "displayName": "Alice SCIM",
+          "userName": "alice@example.com"
+        }
+      },
+      {
+        "id": "SCIM_ID_BBB",
+        "kinds": ["SCIM_User"],
+        "properties": {
+          "displayName": "Bob SCIM",
+          "userName": "bob@example.com"
+        }
+      }
+    ],
+    "edges": [
+      {
+        "kind": "SCIM_Provisioned",
+        "start": {"value": "OKTA_USER_001"},
+        "end": {"value": "SCIM_ID_AAA"},
+        "properties": {"traversable": true}
+      },
+      {
+        "kind": "SCIM_Provisioned",
+        "start": {"value": "OKTA_USER_002"},
+        "end": {"value": "SCIM_ID_BBB"},
+        "properties": {"traversable": true}
+      }
+    ]
+  }
+}

@@ -1,0 +1,272 @@
+{
+  "dataset": "knexus",
+  "generated_at": "2026-04-11T10:15:40Z",
+  "query_count": 53,
+  "results": [
+    {
+      "name": "Total nodes",
+      "cypher": "MATCH (n) RETURN count(n) AS nodes",
+      "result": "11203"
+    },
+    {
+      "name": "Total relationships",
+      "cypher": "MATCH ()-[r]-\u003e() RETURN count(r) AS relationships",
+      "result": "61746"
+    },
+    {
+      "name": "Domains",
+      "cypher": "MATCH (n:Domain) RETURN n.name AS domain, n.objectid AS sid ORDER BY domain",
+      "result": "CORP.K-NEXUSGLOBAL.COM, S-1-5-21-2263075893-3638156356-974066732\nK-NEXUSGLOBAL.COM, S-1-5-21-1569959167-1766989860-2717381834"
+    },
+    {
+      "name": "Computers",
+      "cypher": "MATCH (n:Computer) RETURN count(n) AS computers",
+      "result": "329"
+    },
+    {
+      "name": "Users",
+      "cypher": "MATCH (n:User) RETURN count(n) AS users",
+      "result": "558"
+    },
+    {
+      "name": "Groups",
+      "cypher": "MATCH (n:Group) RETURN count(n) AS groups",
+      "result": "194"
+    },
+    {
+      "name": "OUs",
+      "cypher": "MATCH (n:OU) RETURN count(n) AS ous",
+      "result": "64"
+    },
+    {
+      "name": "GPOs",
+      "cypher": "MATCH (n:GPO) RETURN count(n) AS gpos",
+      "result": "35"
+    },
+    {
+      "name": "ADCS cert templates",
+      "cypher": "MATCH (n:CertTemplate) RETURN count(n) AS cert_templates",
+      "result": "36"
+    },
+    {
+      "name": "Enterprise CAs",
+      "cypher": "MATCH (n:EnterpriseCA) RETURN count(n) AS enterprise_cas",
+      "result": "1"
+    },
+    {
+      "name": "Kerberoastable users",
+      "cypher": "MATCH (u:User) WHERE u.hasspn = true AND u.enabled = true RETURN count(u) AS kerberoastable",
+      "result": "9"
+    },
+    {
+      "name": "AS-REP roastable users",
+      "cypher": "MATCH (u:User) WHERE u.dontreqpreauth = true AND u.enabled = true RETURN count(u) AS asrep_roastable",
+      "result": "3"
+    },
+    {
+      "name": "AdminCount users",
+      "cypher": "MATCH (u:User) WHERE u.admincount = true RETURN count(u) AS admin_count_users",
+      "result": "50"
+    },
+    {
+      "name": "Unconstrained delegation computers",
+      "cypher": "MATCH (c:Computer) WHERE c.unconstraineddelegation = true RETURN count(c) AS unconstrained",
+      "result": "2"
+    },
+    {
+      "name": "Enabled domain admin users",
+      "cypher": "MATCH (u:User)-[:MemberOf*1..]-\u003e(g:Group) WHERE g.objectid ENDS WITH '-512' AND u.enabled = true RETURN count(DISTINCT u) AS domain_admins",
+      "result": "11"
+    },
+    {
+      "name": "DCSync relationships",
+      "cypher": "MATCH ()-[r:DCSync]-\u003e() RETURN count(r) AS dcsync",
+      "result": "9"
+    },
+    {
+      "name": "HasSession relationships",
+      "cypher": "MATCH ()-[r:HasSession]-\u003e() RETURN count(r) AS sessions",
+      "result": "7"
+    },
+    {
+      "name": "AdminTo relationships",
+      "cypher": "MATCH ()-[r:AdminTo]-\u003e() RETURN count(r) AS admin_tos",
+      "result": "15"
+    },
+    {
+      "name": "MemberOf relationships",
+      "cypher": "MATCH ()-[r:MemberOf]-\u003e() RETURN count(r) AS member_ofs",
+      "result": "1757"
+    },
+    {
+      "name": "Azure tenants",
+      "cypher": "MATCH (n:AZTenant) RETURN count(n) AS tenants",
+      "result": "2"
+    },
+    {
+      "name": "Azure users",
+      "cypher": "MATCH (n:AZUser) RETURN count(n) AS az_users",
+      "result": "906"
+    },
+    {
+      "name": "Azure groups",
+      "cypher": "MATCH (n:AZGroup) RETURN count(n) AS az_groups",
+      "result": "97"
+    },
+    {
+      "name": "Azure apps",
+      "cypher": "MATCH (n:AZApp) RETURN count(n) AS apps",
+      "result": "255"
+    },
+    {
+      "name": "Azure service principals",
+      "cypher": "MATCH (n:AZServicePrincipal) RETURN count(n) AS service_principals",
+      "result": "255"
+    },
+    {
+      "name": "Azure roles",
+      "cypher": "MATCH (n:AZRole) RETURN count(n) AS az_roles",
+      "result": "137"
+    },
+    {
+      "name": "Azure VMs",
+      "cypher": "MATCH (n:AZVM) RETURN count(n) AS vms",
+      "result": "0"
+    },
+    {
+      "name": "Azure devices",
+      "cypher": "MATCH (n:AZDevice) RETURN count(n) AS az_devices",
+      "result": "466"
+    },
+    {
+      "name": "AZGlobalAdmin relationships",
+      "cypher": "MATCH ()-[r:AZGlobalAdmin]-\u003e() RETURN count(r) AS global_admins",
+      "result": "16"
+    },
+    {
+      "name": "AZOwns relationships",
+      "cypher": "MATCH ()-[r:AZOwns]-\u003e() RETURN count(r) AS az_owns",
+      "result": "16"
+    },
+    {
+      "name": "AZMemberOf relationships",
+      "cypher": "MATCH ()-[r:AZMemberOf]-\u003e() RETURN count(r) AS az_member_ofs",
+      "result": "1824"
+    },
+    {
+      "name": "AZHasRole relationships",
+      "cypher": "MATCH ()-[r:AZHasRole]-\u003e() RETURN count(r) AS az_has_role",
+      "result": "34"
+    },
+    {
+      "name": "Domain trusts",
+      "cypher": "MATCH ()-[r:TrustedBy]-\u003e() RETURN count(r) AS trusts",
+      "result": "0"
+    },
+    {
+      "name": "Distinct relationship types",
+      "cypher": "MATCH ()-[r]-\u003e() RETURN DISTINCT type(r) AS relationType ORDER BY relationType",
+      "result": "ADCSESC1\nADCSESC3\nADCSESC4\nAZAddMembers\nAZAddSecret\nAZAuthenticatesTo\nAZContains\nAZGlobalAdmin\nAZHasRole\nAZMGAddMember\nAZMGAddOwner\nAZMGAddSecret\nAZMGAppRoleAssignment_ReadWrite_All\nAZMGApplication_ReadWrite_All\nAZMGDirectory_ReadWrite_All\nAZMGGrantAppRoles\nAZMGGrantRole\nAZMGGroupMember_ReadWrite_All\nAZMGGroup_ReadWrite_All\nAZMGRoleManagement_ReadWrite_Directory\nAZMGServicePrincipalEndpoint_ReadWrite_All\nAZMemberOf\nAZOwner\nAZOwns\nAZPrivilegedAuthAdmin\nAZPrivilegedRoleAdmin\nAZResetPassword\nAZRoleEligible\nAZRunsAs\nAZUserAccessAdministrator\nAddKeyCredentialLink\nAdminTo\nAllExtendedRights\nCanPSRemote\nCanRDP\nClaimSpecialIdentity\nContains\nDCFor\nDCSync\nDesktopSSOIdentityTransform\nDumpSMSAPassword\nEnroll\nEnrollOnBehalfOf\nEnterpriseCAFor\nExecuteDCOM\nForceChangePassword\nGH_AddAssignee\nGH_AddCollaborator\nGH_AddLabel\nGH_AddMember\nGH_AdminTo\nGH_BypassBranchProtection\nGH_BypassPullRequestAllowances\nGH_CanAccess\nGH_CanCreateBranch\nGH_CanEditProtection\nGH_CanReadSecretScanningAlert\nGH_CanWriteBranch\nGH_CloseDiscussion\nGH_CloseIssue\nGH_ClosePullRequest\nGH_Contains\nGH_ConvertIssuesToDiscussions\nGH_CreateDiscussionCategory\nGH_CreateEnterpriseOrganizations\nGH_CreateRepository\nGH_CreateSoloMergeQueueEntry\nGH_CreateTag\nGH_CreateTeam\nGH_DeleteAlertsCodeScanning\nGH_DeleteDiscussion\nGH_DeleteDiscussionComment\nGH_DeleteIssue\nGH_DeleteTag\nGH_EditCategoryOnDiscussion\nGH_EditDiscussionCategory\nGH_EditDiscussionComment\nGH_EditEnterpriseCustomPropertiesForOrganizations\nGH_EditRepoAnnouncementBanners\nGH_EditRepoCustomPropertiesValues\nGH_EditRepoMetadata\nGH_EditRepoProtections\nGH_HasBaseRole\nGH_HasBranch\nGH_HasEnvironment\nGH_HasExternalIdentity\nGH_HasMember\nGH_HasRole\nGH_HasSecret\nGH_HasWorkflow\nGH_InstalledAs\nGH_InviteMember\nGH_JumpMergeQueue\nGH_ManageDeployKeys\nGH_ManageDiscussionBadges\nGH_ManageEnterpriseAdmins\nGH_ManageEnterpriseMembers\nGH_ManageRepoSecurityProducts\nGH_ManageSecurityProducts\nGH_ManageSettingsMergeTypes\nGH_ManageSettingsPages\nGH_ManageSettingsProjects\nGH_ManageSettingsWiki\nGH_ManageTopics\nGH_ManageWebhooks\nGH_MapsToUser\nGH_MarkAsDuplicate\nGH_MemberOf\nGH_OrgBypassCodeScanningDismissalRequests\nGH_OrgBypassSecretScanningClosureRequests\nGH_OrgReviewAndManageSecretScanningBypassRequests\nGH_OrgReviewAndManageSecretScanningClosureRequests\nGH_Owns\nGH_ProtectedBy\nGH_PushProtectedBranch\nGH_ReadCodeScanning\nGH_ReadEnterpriseMembers\nGH_ReadOrganizationActionsUsageMetrics\nGH_ReadRepoContents\nGH_RemoveAssignee\nGH_RemoveLabel\nGH_ReopenDiscussion\nGH_ReopenIssue\nGH_ReopenPullRequest\nGH_RequestPrReview\nGH_ResolveDependabotAlerts\nGH_ResolveSecretScanningAlerts\nGH_RestrictionsCanPush\nGH_RunOrgMigration\nGH_SetInteractionLimits\nGH_SetIssueType\nGH_SetMilestone\nGH_SetSocialPreview\nGH_ToggleDiscussionAnswer\nGH_ToggleDiscussionCommentMinimize\nGH_TransferRepository\nGH_ValidToken\nGH_ViewDependabotAlerts\nGH_ViewSecretScanningAlerts\nGH_WriteCodeScanning\nGH_WriteEnterpriseSso\nGH_WriteOrganizationActionsSecrets\nGH_WriteOrganizationActionsSettings\nGH_WriteOrganizationActionsVariables\nGH_WriteOrganizationNetworkConfigurations\nGH_WriteRepoContents\nGH_WriteRepoPullRequests\nGPLink\nGenericAll\nGenericWrite\nGetChanges\nGetChangesAll\nGetChangesInFilteredSet\nGoldenCert\nHasSession\nHasTrustKeys\nHostsCAService\nLocalToComputer\nManageCA\nManageCertificates\nMemberOf\nMemberOfLocalGroup\nNTAuthStoreFor\nOkta_AppAssignment\nOkta_Contains\nOkta_DeviceOf\nOkta_GroupAdmin\nOkta_GroupPull\nOkta_GroupPush\nOkta_HasRole\nOkta_HasRoleAssignment\nOkta_HostsAgent\nOkta_IdentityProviderFor\nOkta_IdpGroupAssignment\nOkta_InboundOrgSSO\nOkta_KerberosSSO\nOkta_KeyOf\nOkta_ManagerOf\nOkta_MemberOf\nOkta_MembershipSync\nOkta_OrgAdmin\nOkta_OutboundOrgSSO\nOkta_OutboundSSO\nOkta_PasswordSync\nOkta_PolicyMapping\nOkta_ResourceSetContains\nOkta_ScopedTo\nOkta_SuperAdmin\nOkta_UserPush\nOkta_UserSync\nOwns\nOwnsRaw\nProtectAdminGroups\nPublishedTo\nReadGMSAPassword\nReadLAPSPassword\nRemoteInteractiveLogonRight\nRootCAFor\nSCIM_MemberOf\nSCIM_Provisioned\nSQLAdmin\nSameForestTrust\nSyncLAPSPassword\nSyncedToADUser\nSyncedToEntraUser\nTrustedForNTAuth\nWriteAccountRestrictions\nWriteDacl\nWriteOwner\nWriteOwnerRaw"
+    },
+    {
+      "name": "DCSync (edge count)",
+      "cypher": "MATCH ()-[r:DCSync]-\u003e() RETURN count(r) AS c",
+      "result": "9"
+    },
+    {
+      "name": "HasSession (edge count)",
+      "cypher": "MATCH ()-[r:HasSession]-\u003e() RETURN count(r) AS c",
+      "result": "7"
+    },
+    {
+      "name": "MemberOf (edge count)",
+      "cypher": "MATCH ()-[r:MemberOf]-\u003e() RETURN count(r) AS c",
+      "result": "1757"
+    },
+    {
+      "name": "AdminTo (edge count)",
+      "cypher": "MATCH ()-[r:AdminTo]-\u003e() RETURN count(r) AS c",
+      "result": "15"
+    },
+    {
+      "name": "GenericAll (edge count)",
+      "cypher": "MATCH ()-[r:GenericAll]-\u003e() RETURN count(r) AS c",
+      "result": "3293"
+    },
+    {
+      "name": "GenericWrite (edge count)",
+      "cypher": "MATCH ()-[r:GenericWrite]-\u003e() RETURN count(r) AS c",
+      "result": "3889"
+    },
+    {
+      "name": "Owns (edge count)",
+      "cypher": "MATCH ()-[r:Owns]-\u003e() RETURN count(r) AS c",
+      "result": "1379"
+    },
+    {
+      "name": "WriteOwner (edge count)",
+      "cypher": "MATCH ()-[r:WriteOwner]-\u003e() RETURN count(r) AS c",
+      "result": "1819"
+    },
+    {
+      "name": "ForceChangePassword (edge count)",
+      "cypher": "MATCH ()-[r:ForceChangePassword]-\u003e() RETURN count(r) AS c",
+      "result": "1381"
+    },
+    {
+      "name": "AddMember (edge count)",
+      "cypher": "MATCH ()-[r:AddMember]-\u003e() RETURN count(r) AS c",
+      "result": "0"
+    },
+    {
+      "name": "ADCSESC1 (edge count)",
+      "cypher": "MATCH ()-[r:ADCSESC1]-\u003e() RETURN count(r) AS c",
+      "result": "4"
+    },
+    {
+      "name": "ADCSESC3 (edge count)",
+      "cypher": "MATCH ()-[r:ADCSESC3]-\u003e() RETURN count(r) AS c",
+      "result": "2"
+    },
+    {
+      "name": "SyncLAPSPassword (edge count)",
+      "cypher": "MATCH ()-[r:SyncLAPSPassword]-\u003e() RETURN count(r) AS c",
+      "result": "1600"
+    },
+    {
+      "name": "GoldenCert (edge count)",
+      "cypher": "MATCH ()-[r:GoldenCert]-\u003e() RETURN count(r) AS c",
+      "result": "1"
+    },
+    {
+      "name": "AZGlobalAdmin (edge count)",
+      "cypher": "MATCH ()-[r:AZGlobalAdmin]-\u003e() RETURN count(r) AS c",
+      "result": "16"
+    },
+    {
+      "name": "AZOwns (edge count)",
+      "cypher": "MATCH ()-[r:AZOwns]-\u003e() RETURN count(r) AS c",
+      "result": "16"
+    },
+    {
+      "name": "AZPrivilegedRoleAdmin (edge count)",
+      "cypher": "MATCH ()-[r:AZPrivilegedRoleAdmin]-\u003e() RETURN count(r) AS c",
+      "result": "1"
+    },
+    {
+      "name": "AZMemberOf (edge count)",
+      "cypher": "MATCH ()-[r:AZMemberOf]-\u003e() RETURN count(r) AS c",
+      "result": "1824"
+    },
+    {
+      "name": "AZHasRole (edge count)",
+      "cypher": "MATCH ()-[r:AZHasRole]-\u003e() RETURN count(r) AS c",
+      "result": "34"
+    },
+    {
+      "name": "AZContributor (edge count)",
+      "cypher": "MATCH ()-[r:AZContributor]-\u003e() RETURN count(r) AS c",
+      "result": "0"
+    }
+  ]
+}

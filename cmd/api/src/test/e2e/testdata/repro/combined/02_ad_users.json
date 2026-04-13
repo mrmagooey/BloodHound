@@ -1,0 +1,28 @@
+{
+  "meta": {
+    "type": "users",
+    "methods": 46067,
+    "version": 6
+  },
+  "data": [
+    {
+      "Properties": {
+        "domain": "REPRO.LOCAL",
+        "name": "ADMIN@REPRO.LOCAL",
+        "distinguishedname": "CN=ADMIN,CN=USERS,DC=REPRO,DC=LOCAL",
+        "domainsid": "S-1-5-21-1111111111-2222222222-3333333333",
+        "enabled": true,
+        "admincount": true
+      },
+      "AllowedToDelegate": [],
+      "PrimaryGroupSID": "S-1-5-21-1111111111-2222222222-3333333333-513",
+      "HasSIDHistory": [],
+      "SpnTargets": [],
+      "Aces": [],
+      "ObjectIdentifier": "S-1-5-21-1111111111-2222222222-3333333333-500",
+      "IsDeleted": false,
+      "IsACLProtected": false,
+      "ContainedBy": null
+    }
+  ]
+}

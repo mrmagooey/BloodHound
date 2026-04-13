@@ -1,0 +1,28 @@
+{
+  "meta": {
+    "type": "domains",
+    "methods": 46067,
+    "version": 6
+  },
+  "data": [
+    {
+      "Properties": {
+        "domain": "REPRO.LOCAL",
+        "name": "REPRO.LOCAL",
+        "distinguishedname": "DC=REPRO,DC=LOCAL",
+        "domainsid": "S-1-5-21-1111111111-2222222222-3333333333",
+        "functionallevel": "2016",
+        "whencreated": 1568630538,
+        "collected": true
+      },
+      "ChildObjects": [],
+      "Trusts": [],
+      "Aces": [],
+      "Links": [],
+      "ObjectIdentifier": "S-1-5-21-1111111111-2222222222-3333333333",
+      "IsDeleted": false,
+      "IsACLProtected": false,
+      "ContainedBy": null
+    }
+  ]
+}

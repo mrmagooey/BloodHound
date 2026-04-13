@@ -482,6 +482,138 @@ func TestCompareKNexusOpenGraph(t *testing.T) {
 		totalMatch, totalMismatch, totalError, totalNonDet, totalSkipped)
 }
 
+// TestCompareKNexusNodeCounts is a diagnostic test that compares per-label node counts
+// between kglite and Neo4j for the k-nexus dataset. It helps identify which specific
+// labels produce extra or missing nodes, narrowing down MERGE behavior divergences.
+func TestCompareKNexusNodeCounts(t *testing.T) {
+	ctx := context.Background()
+	knexusZip := filepath.Join(testdataDir(), "k-nexusglobal_sampledata.zip")
+	skipIfMissing(t, knexusZip)
+
+	kgliteDB := openGraph(t)
+	neo4jDB := openNeo4j(t)
+
+	// Prepare Neo4j
+	clearNeo4j(ctx, t, neo4jDB)
+	require.NoError(t, retryNeo4j(t, "AssertSchema", func() error {
+		return neo4jDB.AssertSchema(ctx, schema.DefaultGraphSchema())
+	}))
+
+	ingestSchema := loadIngestSchema(t)
+
+	// Ingest into both
+	t.Log("=== Ingesting k-nexus-global data into kglite ===")
+	ingestZipTolerant(ctx, t, kgliteDB, knexusZip, ingestSchema)
+	t.Log("=== Ingesting k-nexus-global data into Neo4j ===")
+	ingestZipTolerant(ctx, t, neo4jDB, knexusZip, ingestSchema)
+
+	// Analysis on both
+	t.Log("=== Running analysis on kglite ===")
+	runAnalysis(ctx, t, kgliteDB)
+	t.Log("=== Running analysis on Neo4j ===")
+	runAnalysis(ctx, t, neo4jDB)
+
+	// --- Diagnostic 1: Per-label node counts ---
+	// Get all distinct labels from both backends, then count nodes per label.
+	t.Log("")
+	t.Log("=== Diagnostic: Per-label node counts ===")
+
+	// First, get total counts
+	totalQuery := []presetQuery{
+		{"Total nodes", "MATCH (n) RETURN count(n)"},
+		{"Total relationships", "MATCH ()-[r]->() RETURN count(r)"},
+	}
+	results := compareQueries(ctx, t, kgliteDB, neo4jDB, totalQuery)
+	reportComparison(t, results)
+
+	// Collect distinct labels from kglite by querying each known platform label set.
+	// These are all the labels that appear in the k-nexus dataset.
+	labelQueries := []presetQuery{
+		// AD labels
+		{"Base", "MATCH (n:Base) RETURN count(n)"},
+		{"User", "MATCH (n:User) RETURN count(n)"},
+		{"Computer", "MATCH (n:Computer) RETURN count(n)"},
+		{"Group", "MATCH (n:Group) RETURN count(n)"},
+		{"Domain", "MATCH (n:Domain) RETURN count(n)"},
+		{"OU", "MATCH (n:OU) RETURN count(n)"},
+		{"GPO", "MATCH (n:GPO) RETURN count(n)"},
+		{"Container", "MATCH (n:Container) RETURN count(n)"},
+		{"CertTemplate", "MATCH (n:CertTemplate) RETURN count(n)"},
+		{"EnterpriseCA", "MATCH (n:EnterpriseCA) RETURN count(n)"},
+		{"RootCA", "MATCH (n:RootCA) RETURN count(n)"},
+		{"NTAuthStore", "MATCH (n:NTAuthStore) RETURN count(n)"},
+		{"AIACA", "MATCH (n:AIACA) RETURN count(n)"},
+		{"IssuancePolicy", "MATCH (n:IssuancePolicy) RETURN count(n)"},
+
+		// Azure labels
+		{"AZBase", "MATCH (n:AZBase) RETURN count(n)"},
+		{"AZTenant", "MATCH (n:AZTenant) RETURN count(n)"},
+		{"AZUser", "MATCH (n:AZUser) RETURN count(n)"},
+		{"AZGroup", "MATCH (n:AZGroup) RETURN count(n)"},
+		{"AZApp", "MATCH (n:AZApp) RETURN count(n)"},
+		{"AZServicePrincipal", "MATCH (n:AZServicePrincipal) RETURN count(n)"},
+		{"AZVM", "MATCH (n:AZVM) RETURN count(n)"},
+		{"AZDevice", "MATCH (n:AZDevice) RETURN count(n)"},
+		{"AZRole", "MATCH (n:AZRole) RETURN count(n)"},
+		{"AZManagementGroup", "MATCH (n:AZManagementGroup) RETURN count(n)"},
+		{"AZSubscription", "MATCH (n:AZSubscription) RETURN count(n)"},
+		{"AZResourceGroup", "MATCH (n:AZResourceGroup) RETURN count(n)"},
+
+		// Okta labels
+		{"OktaUser", "MATCH (n:OktaUser) RETURN count(n)"},
+		{"OktaGroup", "MATCH (n:OktaGroup) RETURN count(n)"},
+
+		// GitHub labels
+		{"GH_Org", "MATCH (n:GH_Org) RETURN count(n)"},
+		{"GH_Repository", "MATCH (n:GH_Repository) RETURN count(n)"},
+		{"GH_User", "MATCH (n:GH_User) RETURN count(n)"},
+		{"GH_Team", "MATCH (n:GH_Team) RETURN count(n)"},
+
+		// Jamf labels
+		{"Jamf_Computer", "MATCH (n:Jamf_Computer) RETURN count(n)"},
+
+		// Cross-platform / analysis-generated
+		{"ADLocalGroup", "MATCH (n:ADLocalGroup) RETURN count(n)"},
+	}
+
+	t.Log("")
+	t.Log("=== Per-label node counts ===")
+	labelResults := compareQueries(ctx, t, kgliteDB, neo4jDB, labelQueries)
+	reportComparison(t, labelResults)
+
+	// --- Diagnostic 2: All distinct primary labels with counts ---
+	// Use labels() to get all labels, then count per unique label.
+	t.Log("")
+	t.Log("=== Diagnostic: All labels with counts (via UNWIND labels) ===")
+	allLabelQueries := []presetQuery{
+		{
+			"All labels with counts",
+			`MATCH (n) UNWIND labels(n) AS lbl RETURN lbl, count(*) AS c ORDER BY c DESC`,
+		},
+	}
+	allLabelResults := compareQueries(ctx, t, kgliteDB, neo4jDB, allLabelQueries)
+	reportComparison(t, allLabelResults)
+
+	// Print full results for inspection
+	for _, r := range allLabelResults {
+		t.Logf("  kglite labels:\n%s", r.KgliteResult)
+		t.Logf("  neo4j labels:\n%s", r.Neo4jResult)
+	}
+
+	// --- Diagnostic 3: Nodes without objectid, and distinct objectid counts ---
+	t.Log("")
+	t.Log("=== Diagnostic: Node identity breakdown ===")
+	identityQueries := []presetQuery{
+		{"Nodes with objectid", `MATCH (n) WHERE n.objectid IS NOT NULL RETURN count(n)`},
+		{"Nodes without objectid", `MATCH (n) WHERE n.objectid IS NULL RETURN count(n)`},
+		{"Distinct objectids", `MATCH (n) WHERE n.objectid IS NOT NULL RETURN count(DISTINCT n.objectid)`},
+		{"Objectids on >1 node", `MATCH (n) WHERE n.objectid IS NOT NULL WITH n.objectid AS oid, count(n) AS cnt WHERE cnt > 1 RETURN count(oid)`},
+		{"Objectid distribution by node count", `MATCH (n) WHERE n.objectid IS NOT NULL WITH n.objectid AS oid, count(n) AS cnt RETURN cnt AS nodes_per_oid, count(oid) AS num_oids ORDER BY cnt`},
+	}
+	identityResults := compareQueries(ctx, t, kgliteDB, neo4jDB, identityQueries)
+	reportComparison(t, identityResults)
+}
+
 func init() {
 	for _, q := range knexusPresetQueries {
 		if q.Name == "" || q.Cypher == "" {

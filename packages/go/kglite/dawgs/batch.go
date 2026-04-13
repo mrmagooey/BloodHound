@@ -18,6 +18,7 @@ package dawgs
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -46,8 +47,8 @@ type Batch struct {
 	pendingEdges   []kglite.EdgeSpec
 	pendingDeletes []uint64 // relationship IDs pending batched DELETE
 	flushSize      int
-	kindsWritten   map[string]bool   // tracks objectids that already have __kinds set
-	oidToIdx       map[string]uint64 // objectid -> node index cache for bulk edge FFI
+	kindsWritten   map[string]bool                // tracks objectids that already have __kinds set
+	oidToIdx       map[string]map[string]uint64 // objectid -> (label -> node index) cache for bulk edge FFI
 	pendingLookups []string          // objectids awaiting node-index lookup after next Cypher flush
 }
 
@@ -68,7 +69,7 @@ func (b *Batch) resolvePendingLookups() error {
 	}
 
 	if b.oidToIdx == nil {
-		b.oidToIdx = make(map[string]uint64, len(b.pendingLookups))
+		b.oidToIdx = make(map[string]map[string]uint64, len(b.pendingLookups))
 	}
 
 	// Build a list of objectids to look up (only those not already cached).
@@ -91,9 +92,13 @@ func (b *Batch) resolvePendingLookups() error {
 	}
 
 	// Issue a single MATCH query for all objectids at once.
+	// Use label-free MATCH (n) so we cache nodes with any primary label (Base,
+	// AZBase, SCIM, Okta, GH_*, etc.), preventing duplicate-node creation in
+	// the slow path when a cross-platform relationship references a node whose
+	// primary label differs from Base.
 	start := time.Now()
 	result, err := b.driver.kg.Cypher(
-		"MATCH (n:Base) WHERE n.objectid IN $oids RETURN n.objectid, id(n)",
+		"MATCH (n) WHERE n.objectid IN $oids RETURN n.objectid, id(n), labels(n)",
 		map[string]interface{}{"oids": oidList},
 	)
 	if err != nil {
@@ -101,7 +106,7 @@ func (b *Batch) resolvePendingLookups() error {
 	}
 
 	for _, row := range result.Rows {
-		if len(row) < 2 {
+		if len(row) < 3 {
 			continue
 		}
 		oid, ok := row[0].(string)
@@ -119,7 +124,36 @@ func (b *Batch) resolvePendingLookups() error {
 		default:
 			continue
 		}
-		b.oidToIdx[oid] = idx
+		// Parse the labels from the third column.
+		// kglite returns labels(n) as a JSON array string (e.g. `["Okta","Okta_User"]`),
+		// not a native []interface{}. We must handle both forms:
+		//   - string: unmarshal the JSON array ourselves
+		//   - []interface{}: native array (future-proofing / other callers)
+		var labelStrs []string
+		switch v := row[2].(type) {
+		case string:
+			// kglite encodes labels(n) as a JSON array string — parse it.
+			_ = json.Unmarshal([]byte(v), &labelStrs)
+		case []interface{}:
+			for _, lbl := range v {
+				if s, ok := lbl.(string); ok {
+					labelStrs = append(labelStrs, s)
+				}
+			}
+		}
+		labelMap := b.oidToIdx[oid]
+		if labelMap == nil {
+			labelMap = make(map[string]uint64, len(labelStrs)+1)
+			b.oidToIdx[oid] = labelMap
+		}
+		for _, s := range labelStrs {
+			labelMap[s] = idx
+		}
+		// Also store under the empty key so a single-node objectid is easy to
+		// retrieve when there is exactly one physical node for this oid.
+		if len(labelMap) == 0 {
+			labelMap[""] = idx
+		}
 	}
 	if ProfilingEnabled() {
 		recordQuery(fmt.Sprintf("[oid-lookup: %d oids]", len(toFetch)), time.Since(start))
@@ -381,6 +415,20 @@ func (b *Batch) UpdateNodeBy(update graph.NodeUpdate) error {
 		}
 	}
 
+	// Populate oidToKind: record the first-seen identity kind for each objectid.
+	// This is used by UpdateRelationshipBy to correct the generic "Base" fallback
+	// when a cross-reference file (empty source_kind) references an OpenGraph node.
+	// Note: we do NOT redirect kindStr here — UpdateNodeBy should use the identity
+	// kind as-is, matching Neo4j's label-specific MERGE behavior.
+	if oid, ok := identityMap["objectid"].(string); ok && oid != "" {
+		if b.driver.oidToKind == nil {
+			b.driver.oidToKind = make(map[string]string, 8192)
+		}
+		if _, seen := b.driver.oidToKind[oid]; !seen {
+			b.driver.oidToKind[oid] = kindStr
+		}
+	}
+
 	identityPattern, identityParams := propsPattern("id_", identityMap)
 	setFrag, propParams := setClause("n", "p_", propsMap)
 
@@ -495,6 +543,27 @@ func (b *Batch) updateRelationshipByFFI(
 	return b.maybeFlush()
 }
 
+// lookupIdx resolves a node index from the label map for a given objectid.
+// kindStr is the Cypher identity-kind fragment, e.g. ":Base" or ":SCIM".
+// It requires an exact label match — no cross-label fallback.
+// This ensures the FFI fast path is only used when the cached node has the
+// same primary label as the identity kind, preventing the MERGE stubs from
+// creating duplicate nodes with a mismatched label.
+func lookupIdx(labelMap map[string]uint64, kindStr string) (uint64, bool) {
+	if labelMap == nil {
+		return 0, false
+	}
+	// Strip the leading colon and backticks from the kindStr (e.g. ":`Base`" -> "Base").
+	label := strings.TrimPrefix(kindStr, ":")
+	label = strings.Trim(label, "`")
+	if label != "" {
+		if idx, ok := labelMap[label]; ok {
+			return idx, true
+		}
+	}
+	return 0, false
+}
+
 // UpdateRelationshipBy performs an upsert of a relationship identified by start/end/kind/properties.
 //
 // Fast path: if both endpoint node indices are already in the oidToIdx cache (populated
@@ -605,12 +674,15 @@ func (b *Batch) UpdateRelationshipBy(update graph.RelationshipUpdate) error {
 	// -- Fast path: both endpoint indices are cached ----------------------------
 	// If both endpoint objectids are in the oidToIdx cache, we can use the bulk
 	// edge FFI to create the relationship without a triple-MERGE Cypher query.
-	if b.oidToIdx != nil {
-		startOid, startHasOid := startIdentity["objectid"].(string)
-		endOid, endHasOid := endIdentity["objectid"].(string)
-		if startHasOid && endHasOid && startOid != "" && endOid != "" {
-			startIdx, startCached := b.oidToIdx[startOid]
-			endIdx, endCached := b.oidToIdx[endOid]
+	startOid, startHasOid := startIdentity["objectid"].(string)
+	endOid, endHasOid := endIdentity["objectid"].(string)
+	if startHasOid && endHasOid && startOid != "" && endOid != "" {
+		if b.oidToIdx != nil {
+			startLabelMap := b.oidToIdx[startOid]
+			endLabelMap := b.oidToIdx[endOid]
+
+			startIdx, startCached := lookupIdx(startLabelMap, startKindStr)
+			endIdx, endCached := lookupIdx(endLabelMap, endKindStr)
 			if startCached && endCached {
 				return b.updateRelationshipByFFI(
 					update, relKindStr,
@@ -622,9 +694,39 @@ func (b *Batch) UpdateRelationshipBy(update graph.RelationshipUpdate) error {
 				)
 			}
 		}
+
+		// If the fast path missed AND there are unresolved pending lookups,
+		// eagerly flush + resolve before falling to the slow path. This
+		// prevents the triple-MERGE from creating duplicate nodes when nodes
+		// were queued in pendingLookups but not yet flushed (common when
+		// switching from node-heavy files to relationship-heavy files within
+		// the same BatchOperation).
+		if len(b.pendingLookups) > 0 || len(b.pending) > 0 {
+			if err := b.flush(); err != nil {
+				return err
+			}
+			if b.oidToIdx != nil {
+				startLabelMap := b.oidToIdx[startOid]
+				endLabelMap := b.oidToIdx[endOid]
+
+				startIdx, startCached := lookupIdx(startLabelMap, startKindStr)
+				endIdx, endCached := lookupIdx(endLabelMap, endKindStr)
+				if startCached && endCached {
+					return b.updateRelationshipByFFI(
+						update, relKindStr,
+						startIdx, endIdx,
+						startKindStr, endKindStr,
+						startIdentity, endIdentity,
+						startProps, endProps,
+						relProps,
+					)
+				}
+			}
+		}
 	}
 
 	// -- Slow path: fall back to the original triple-MERGE Cypher query ---------
+
 	startPattern, startIdParams := propsPattern("si_", startIdentity)
 	endPattern, endIdParams := propsPattern("ei_", endIdentity)
 	relPattern, relParams := propsPattern("rp_", relProps)

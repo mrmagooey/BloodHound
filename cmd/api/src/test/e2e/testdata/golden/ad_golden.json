@@ -1,0 +1,252 @@
+{
+  "dataset": "ad",
+  "generated_at": "2026-04-11T10:14:39Z",
+  "query_count": 49,
+  "results": [
+    {
+      "name": "Total nodes",
+      "cypher": "MATCH (n) RETURN count(n) AS nodes",
+      "result": "1519"
+    },
+    {
+      "name": "Total relationships",
+      "cypher": "MATCH ()-[r]-\u003e() RETURN count(r) AS relationships",
+      "result": "16663"
+    },
+    {
+      "name": "Domains",
+      "cypher": "MATCH (n:Domain) RETURN n.name AS domain, n.objectid AS sid ORDER BY domain",
+      "result": "CHILD.WRAITH.CORP, S-1-5-21-720005541-26010935-3948964793\nGHOST.CORP, S-1-5-21-2845847946-3451170323-4261139666\nPHANTOM.CORP, S-1-5-21-2697957641-2271029196-387917394\nREVENANT.CORP, S-1-5-21-1852147331-818484528-1557274963\nWRAITH.CORP, S-1-5-21-3702535222-3822678775-2090119576"
+    },
+    {
+      "name": "Computers",
+      "cypher": "MATCH (n:Computer) RETURN count(n) AS computers",
+      "result": "34"
+    },
+    {
+      "name": "Users",
+      "cypher": "MATCH (n:User) RETURN count(n) AS users",
+      "result": "99"
+    },
+    {
+      "name": "Groups",
+      "cypher": "MATCH (n:Group) RETURN count(n) AS groups",
+      "result": "243"
+    },
+    {
+      "name": "Kerberoastable users",
+      "cypher": "MATCH (u:User) WHERE u.hasspn = true AND u.enabled = true RETURN count(u) AS kerberoastable",
+      "result": "2"
+    },
+    {
+      "name": "AS-REP roastable users",
+      "cypher": "MATCH (u:User) WHERE u.dontreqpreauth = true AND u.enabled = true RETURN count(u) AS asrep_roastable",
+      "result": "1"
+    },
+    {
+      "name": "AdminCount users",
+      "cypher": "MATCH (u:User) WHERE u.admincount = true RETURN count(u) AS admin_count_users",
+      "result": "40"
+    },
+    {
+      "name": "AdminCount computers",
+      "cypher": "MATCH (c:Computer) WHERE c.admincount = true RETURN count(c) AS admin_count_computers",
+      "result": "0"
+    },
+    {
+      "name": "Enabled domain admin users",
+      "cypher": "MATCH (u:User)-[:MemberOf*1..]-\u003e(g:Group) WHERE g.objectid ENDS WITH '-512' AND u.enabled = true RETURN count(DISTINCT u) AS domain_admins",
+      "result": "16"
+    },
+    {
+      "name": "DCSync relationships",
+      "cypher": "MATCH ()-[r:DCSync]-\u003e() RETURN count(r) AS dcsync",
+      "result": "8"
+    },
+    {
+      "name": "HasSession relationships",
+      "cypher": "MATCH ()-[r:HasSession]-\u003e() RETURN count(r) AS sessions",
+      "result": "29"
+    },
+    {
+      "name": "AdminTo relationships",
+      "cypher": "MATCH ()-[r:AdminTo]-\u003e() RETURN count(r) AS admin_tos",
+      "result": "24"
+    },
+    {
+      "name": "MemberOf relationships",
+      "cypher": "MATCH ()-[r:MemberOf]-\u003e() RETURN count(r) AS member_ofs",
+      "result": "304"
+    },
+    {
+      "name": "ADCS cert templates",
+      "cypher": "MATCH (n:CertTemplate) RETURN count(n) AS cert_templates",
+      "result": "106"
+    },
+    {
+      "name": "Enterprise CAs",
+      "cypher": "MATCH (n:EnterpriseCA) RETURN count(n) AS enterprise_cas",
+      "result": "4"
+    },
+    {
+      "name": "Computers with unconstrained delegation",
+      "cypher": "MATCH (c:Computer) WHERE c.unconstraineddelegation = true RETURN count(c) AS unconstrained_delegation",
+      "result": "4"
+    },
+    {
+      "name": "OUs",
+      "cypher": "MATCH (n:OU) RETURN count(n) AS ous",
+      "result": "20"
+    },
+    {
+      "name": "GPOs",
+      "cypher": "MATCH (n:GPO) RETURN count(n) AS gpos",
+      "result": "32"
+    },
+    {
+      "name": "DCSync (edge count)",
+      "cypher": "MATCH ()-[r:DCSync]-\u003e() RETURN count(r) AS c",
+      "result": "8"
+    },
+    {
+      "name": "HasSession (edge count)",
+      "cypher": "MATCH ()-[r:HasSession]-\u003e() RETURN count(r) AS c",
+      "result": "29"
+    },
+    {
+      "name": "MemberOf (edge count)",
+      "cypher": "MATCH ()-[r:MemberOf]-\u003e() RETURN count(r) AS c",
+      "result": "304"
+    },
+    {
+      "name": "AdminTo (edge count)",
+      "cypher": "MATCH ()-[r:AdminTo]-\u003e() RETURN count(r) AS c",
+      "result": "24"
+    },
+    {
+      "name": "CanRDP (edge count)",
+      "cypher": "MATCH ()-[r:CanRDP]-\u003e() RETURN count(r) AS c",
+      "result": "0"
+    },
+    {
+      "name": "CanPSRemote (edge count)",
+      "cypher": "MATCH ()-[r:CanPSRemote]-\u003e() RETURN count(r) AS c",
+      "result": "0"
+    },
+    {
+      "name": "ExecuteDCOM (edge count)",
+      "cypher": "MATCH ()-[r:ExecuteDCOM]-\u003e() RETURN count(r) AS c",
+      "result": "0"
+    },
+    {
+      "name": "GenericAll (edge count)",
+      "cypher": "MATCH ()-[r:GenericAll]-\u003e() RETURN count(r) AS c",
+      "result": "3292"
+    },
+    {
+      "name": "GenericWrite (edge count)",
+      "cypher": "MATCH ()-[r:GenericWrite]-\u003e() RETURN count(r) AS c",
+      "result": "579"
+    },
+    {
+      "name": "Owns (edge count)",
+      "cypher": "MATCH ()-[r:Owns]-\u003e() RETURN count(r) AS c",
+      "result": "1439"
+    },
+    {
+      "name": "WriteOwner (edge count)",
+      "cypher": "MATCH ()-[r:WriteOwner]-\u003e() RETURN count(r) AS c",
+      "result": "2187"
+    },
+    {
+      "name": "WriteDACL (edge count)",
+      "cypher": "MATCH ()-[r:WriteDACL]-\u003e() RETURN count(r) AS c",
+      "result": "0"
+    },
+    {
+      "name": "ForceChangePassword (edge count)",
+      "cypher": "MATCH ()-[r:ForceChangePassword]-\u003e() RETURN count(r) AS c",
+      "result": "52"
+    },
+    {
+      "name": "AddMember (edge count)",
+      "cypher": "MATCH ()-[r:AddMember]-\u003e() RETURN count(r) AS c",
+      "result": "93"
+    },
+    {
+      "name": "ADCSESC1 (edge count)",
+      "cypher": "MATCH ()-[r:ADCSESC1]-\u003e() RETURN count(r) AS c",
+      "result": "7"
+    },
+    {
+      "name": "ADCSESC3 (edge count)",
+      "cypher": "MATCH ()-[r:ADCSESC3]-\u003e() RETURN count(r) AS c",
+      "result": "12"
+    },
+    {
+      "name": "ADCSESC4 (edge count)",
+      "cypher": "MATCH ()-[r:ADCSESC4]-\u003e() RETURN count(r) AS c",
+      "result": "7"
+    },
+    {
+      "name": "ADCSESC6a (edge count)",
+      "cypher": "MATCH ()-[r:ADCSESC6a]-\u003e() RETURN count(r) AS c",
+      "result": "5"
+    },
+    {
+      "name": "ADCSESC6b (edge count)",
+      "cypher": "MATCH ()-[r:ADCSESC6b]-\u003e() RETURN count(r) AS c",
+      "result": "12"
+    },
+    {
+      "name": "ADCSESC9a (edge count)",
+      "cypher": "MATCH ()-[r:ADCSESC9a]-\u003e() RETURN count(r) AS c",
+      "result": "17"
+    },
+    {
+      "name": "ADCSESC9b (edge count)",
+      "cypher": "MATCH ()-[r:ADCSESC9b]-\u003e() RETURN count(r) AS c",
+      "result": "12"
+    },
+    {
+      "name": "ADCSESC10a (edge count)",
+      "cypher": "MATCH ()-[r:ADCSESC10a]-\u003e() RETURN count(r) AS c",
+      "result": "9"
+    },
+    {
+      "name": "ADCSESC10b (edge count)",
+      "cypher": "MATCH ()-[r:ADCSESC10b]-\u003e() RETURN count(r) AS c",
+      "result": "10"
+    },
+    {
+      "name": "ADCSESC13 (edge count)",
+      "cypher": "MATCH ()-[r:ADCSESC13]-\u003e() RETURN count(r) AS c",
+      "result": "0"
+    },
+    {
+      "name": "CoerceAndRelayNTLMToSMB (edge count)",
+      "cypher": "MATCH ()-[r:CoerceAndRelayNTLMToSMB]-\u003e() RETURN count(r) AS c",
+      "result": "0"
+    },
+    {
+      "name": "CoerceAndRelayNTLMToADCS (edge count)",
+      "cypher": "MATCH ()-[r:CoerceAndRelayNTLMToADCS]-\u003e() RETURN count(r) AS c",
+      "result": "0"
+    },
+    {
+      "name": "SyncLAPSPassword (edge count)",
+      "cypher": "MATCH ()-[r:SyncLAPSPassword]-\u003e() RETURN count(r) AS c",
+      "result": "2"
+    },
+    {
+      "name": "GPOAppliesTo (edge count)",
+      "cypher": "MATCH ()-[r:GPOAppliesTo]-\u003e() RETURN count(r) AS c",
+      "result": "0"
+    },
+    {
+      "name": "GoldenCert (edge count)",
+      "cypher": "MATCH ()-[r:GoldenCert]-\u003e() RETURN count(r) AS c",
+      "result": "4"
+    }
+  ]
+}

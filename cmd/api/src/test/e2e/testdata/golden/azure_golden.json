@@ -1,0 +1,77 @@
+{
+  "dataset": "azure",
+  "generated_at": "2026-04-11T10:15:03Z",
+  "query_count": 14,
+  "results": [
+    {
+      "name": "Azure tenants",
+      "cypher": "MATCH (n:AZTenant) RETURN count(n) AS tenants",
+      "result": "1"
+    },
+    {
+      "name": "Azure users",
+      "cypher": "MATCH (n:AZUser) RETURN count(n) AS az_users",
+      "result": "230"
+    },
+    {
+      "name": "Azure service principals",
+      "cypher": "MATCH (n:AZServicePrincipal) RETURN count(n) AS service_principals",
+      "result": "6270"
+    },
+    {
+      "name": "Azure apps",
+      "cypher": "MATCH (n:AZApp) RETURN count(n) AS apps",
+      "result": "6648"
+    },
+    {
+      "name": "Azure VMs",
+      "cypher": "MATCH (n:AZVM) RETURN count(n) AS vms",
+      "result": "66"
+    },
+    {
+      "name": "Azure groups",
+      "cypher": "MATCH (n:AZGroup) RETURN count(n) AS az_groups",
+      "result": "58"
+    },
+    {
+      "name": "AZGlobalAdmin relationships",
+      "cypher": "MATCH ()-[r:AZGlobalAdmin]-\u003e() RETURN count(r) AS global_admins",
+      "result": "30"
+    },
+    {
+      "name": "AZOwns relationships",
+      "cypher": "MATCH ()-[r:AZOwns]-\u003e() RETURN count(r) AS az_owns",
+      "result": "2850"
+    },
+    {
+      "name": "AZGlobalAdmin (edge count)",
+      "cypher": "MATCH ()-[r:AZGlobalAdmin]-\u003e() RETURN count(r) AS c",
+      "result": "30"
+    },
+    {
+      "name": "AZOwns (edge count)",
+      "cypher": "MATCH ()-[r:AZOwns]-\u003e() RETURN count(r) AS c",
+      "result": "2850"
+    },
+    {
+      "name": "AZPrivilegedRoleAdmin (edge count)",
+      "cypher": "MATCH ()-[r:AZPrivilegedRoleAdmin]-\u003e() RETURN count(r) AS c",
+      "result": "8"
+    },
+    {
+      "name": "AZMemberOf (edge count)",
+      "cypher": "MATCH ()-[r:AZMemberOf]-\u003e() RETURN count(r) AS c",
+      "result": "4439"
+    },
+    {
+      "name": "AZHasRole (edge count)",
+      "cypher": "MATCH ()-[r:AZHasRole]-\u003e() RETURN count(r) AS c",
+      "result": "598"
+    },
+    {
+      "name": "AZContributor (edge count)",
+      "cypher": "MATCH ()-[r:AZContributor]-\u003e() RETURN count(r) AS c",
+      "result": "25"
+    }
+  ]
+}

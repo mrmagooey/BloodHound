@@ -1,0 +1,105 @@
+{
+  "meta": {
+    "type": "azure",
+    "version": 5,
+    "count": 6
+  },
+  "data": [
+    {
+      "kind": "AZTenant",
+      "data": {
+        "id": "/tenants/TENANT-001",
+        "tenantId": "TENANT-001",
+        "displayName": "Repro Corp",
+        "defaultDomain": "repro.example.com",
+        "tenantType": "AAD",
+        "collected": true
+      }
+    },
+    {
+      "kind": "AZUser",
+      "data": {
+        "id": "USER-INTUNE-ADMIN-001",
+        "displayName": "Intune Admin",
+        "userPrincipalName": "intune.admin@repro.example.com",
+        "mail": "intune.admin@repro.example.com",
+        "userType": "Member",
+        "tenantId": "TENANT-001",
+        "tenantName": "Repro Corp"
+      }
+    },
+    {
+      "kind": "AZDevice",
+      "data": {
+        "id": "DEVICE-WIN-001",
+        "displayName": "REPRO-PC-001",
+        "deviceId": "DEV-ID-001",
+        "operatingSystem": "Windows",
+        "operatingSystemVersion": "10.0.19045",
+        "trustType": "AzureAD",
+        "accountEnabled": true,
+        "tenantId": "TENANT-001",
+        "tenantName": "Repro Corp"
+      }
+    },
+    {
+      "kind": "AZDevice",
+      "data": {
+        "id": "DEVICE-WIN-002",
+        "displayName": "REPRO-PC-002",
+        "deviceId": "DEV-ID-002",
+        "operatingSystem": "Windows",
+        "operatingSystemVersion": "10.0.22631",
+        "trustType": "ServerAd",
+        "accountEnabled": true,
+        "tenantId": "TENANT-001",
+        "tenantName": "Repro Corp"
+      }
+    },
+    {
+      "kind": "AZDevice",
+      "data": {
+        "id": "DEVICE-LINUX-001",
+        "displayName": "REPRO-SRV-001",
+        "deviceId": "DEV-ID-003",
+        "operatingSystem": "Linux",
+        "trustType": "AzureAD",
+        "accountEnabled": true,
+        "tenantId": "TENANT-001",
+        "tenantName": "Repro Corp"
+      }
+    },
+    {
+      "kind": "AZRole",
+      "data": {
+        "id": "3a2c62db-5318-420d-8d74-23affee5d9d5",
+        "displayName": "Intune Administrator",
+        "description": "Can manage all aspects of the Intune product.",
+        "isBuiltIn": true,
+        "isEnabled": true,
+        "resourceScopes": ["/"],
+        "rolePermissions": [],
+        "templateId": "3a2c62db-5318-420d-8d74-23affee5d9d5",
+        "tenantId": "TENANT-001",
+        "tenantName": "Repro Corp"
+      }
+    },
+    {
+      "kind": "AZRoleAssignment",
+      "data": {
+        "roleAssignments": [
+          {
+            "id": "ROLE-ASSIGNMENT-001",
+            "roleDefinitionId": "3a2c62db-5318-420d-8d74-23affee5d9d5",
+            "principalId": "USER-INTUNE-ADMIN-001",
+            "directoryScopeId": "/",
+            "roleDefinition": {"id": ""},
+            "directoryScope": {"id": "", "api": {}, "info": {}, "optionalClaims": {}, "parentalControlSettings": {}, "publicClient": {}, "spa": {}, "verifiedPublisher": {}}
+          }
+        ],
+        "tenantId": "TENANT-001",
+        "tenantName": "Repro Corp"
+      }
+    }
+  ]
+}

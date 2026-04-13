@@ -1,0 +1,55 @@
+{
+  "metadata": {
+    "source_kind": "Okta"
+  },
+  "graph": {
+    "nodes": [
+      {
+        "id": "OKTA_USER_001",
+        "kinds": ["Okta_User"],
+        "properties": {
+          "name": "alice@example.com",
+          "email": "alice@example.com",
+          "enabled": true
+        }
+      },
+      {
+        "id": "OKTA_USER_002",
+        "kinds": ["Okta_User"],
+        "properties": {
+          "name": "bob@example.com",
+          "email": "bob@example.com",
+          "enabled": true
+        }
+      },
+      {
+        "id": "OKTA_USER_003",
+        "kinds": ["Okta_User"],
+        "properties": {
+          "name": "carol@example.com",
+          "email": "carol@example.com",
+          "enabled": true
+        }
+      },
+      {
+        "id": "OKTA_GROUP_001",
+        "kinds": ["Okta_Group"],
+        "properties": {
+          "name": "Engineering"
+        }
+      }
+    ],
+    "edges": [
+      {
+        "kind": "Okta_MemberOf",
+        "start": {"value": "OKTA_USER_001"},
+        "end": {"value": "OKTA_GROUP_001"}
+      },
+      {
+        "kind": "Okta_MemberOf",
+        "start": {"value": "OKTA_USER_002"},
+        "end": {"value": "OKTA_GROUP_001"}
+      }
+    ]
+  }
+}
