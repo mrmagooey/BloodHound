@@ -29,7 +29,7 @@ import (
 )
 
 const defaultBatchFlushSize = 5000
-const defaultEdgeFlushSize = 20000
+const defaultEdgeFlushSize = 5000
 
 // defaultDeleteFlushSize is the number of relationship IDs to accumulate
 // before issuing a single batched DELETE using an IN clause, reducing
@@ -777,6 +777,19 @@ func (b *Batch) UpdateRelationshipBy(update graph.RelationshipUpdate) error {
 
 	if len(setParts) > 0 {
 		cypher += " SET " + strings.Join(setParts, ", ")
+	}
+
+	// Schedule node-index lookups for both endpoints so that after the next
+	// Cypher flush, any stub nodes created by this triple-MERGE will be in the
+	// oidToIdx cache. Without this, a subsequent UpdateRelationshipBy for the
+	// same objectid would miss the fast path again, and the slow-path MERGE
+	// could create duplicate stub nodes if the kglite MERGE engine has a
+	// matching miss (e.g., index not yet populated for newly created nodes).
+	if startOid != "" {
+		b.pendingLookups = append(b.pendingLookups, startOid)
+	}
+	if endOid != "" {
+		b.pendingLookups = append(b.pendingLookups, endOid)
 	}
 
 	return b.enqueue(cypher, mergeParams(startIdParams, endIdParams, relParams, startPropParams, endPropParams))

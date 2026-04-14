@@ -145,8 +145,8 @@ func TestMain(m *testing.M) {
 		log.Println("shared fixture: Azure dataset not found, skipping")
 	}
 
-	// Load Combined AD+Azure graph
-	if adAvailable && azureAvailable {
+	// Load Combined AD+Azure graph (skip if BH_SKIP_COMBINED=1 to save time)
+	if adAvailable && azureAvailable && os.Getenv("BH_SKIP_COMBINED") != "1" {
 		db, dir, err := openFixtureGraph("combined")
 		if err != nil {
 			log.Fatalf("failed to open Combined fixture graph: %v", err)
@@ -169,7 +169,7 @@ func TestMain(m *testing.M) {
 	}
 
 	// Load K-Nexus graph
-	if knexusAvailable {
+	if knexusAvailable && os.Getenv("BH_SKIP_KNEXUS") != "1" {
 		db, dir, err := openFixtureGraph("knexus")
 		if err != nil {
 			log.Fatalf("failed to open K-Nexus fixture graph: %v", err)
@@ -185,6 +185,8 @@ func TestMain(m *testing.M) {
 		}
 		fixtureKNexusGraph = db
 		log.Println("shared fixture: K-Nexus graph loaded and analyzed")
+	} else if os.Getenv("BH_SKIP_KNEXUS") == "1" {
+		log.Println("shared fixture: K-Nexus skipped (BH_SKIP_KNEXUS=1)")
 	} else {
 		log.Println("shared fixture: K-Nexus dataset not found, skipping")
 	}

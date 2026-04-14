@@ -1,4 +1,4 @@
-.PHONY: init kglite ui build build-windows test test-quick test-rust test-comparison test-adminer test-knexus golden-generate golden-test docker clean
+.PHONY: init kglite ui build build-windows test test-quick test-rust test-comparison test-adminer test-knexus golden-generate golden-test golden-test-all docker clean
 
 ## Initialize kglite submodule (run once after clone)
 init:
@@ -54,8 +54,12 @@ test-knexus: kglite
 golden-generate: kglite
 	go test -v -tags 'e2e comparison' -timeout 30m -run 'TestGenerateGolden' ./cmd/api/src/test/e2e/
 
-## Run golden comparison tests (kglite vs golden files, no Neo4j needed)
+## Run golden comparison tests for AD + Azure (kglite vs golden files, no Neo4j needed)
 golden-test: kglite
+	BH_SKIP_KNEXUS=1 BH_SKIP_COMBINED=1 go test -v -tags e2e -timeout 30m -run 'TestGoldenAD|TestGoldenAzure' ./cmd/api/src/test/e2e/
+
+## Run golden comparison tests for all datasets including KNexus
+golden-test-all: kglite
 	go test -v -tags e2e -timeout 30m -run 'TestGolden' ./cmd/api/src/test/e2e/
 
 ## Build Docker container

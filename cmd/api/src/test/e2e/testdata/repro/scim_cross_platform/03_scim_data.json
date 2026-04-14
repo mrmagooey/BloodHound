@@ -1,0 +1,166 @@
+{
+  "metadata": {
+    "source_kind": "SCIM"
+  },
+  "graph": {
+    "nodes": [
+      {
+        "id": "64383338636163652D316533612D313166312D386330382D343538393934383863343735",
+        "kinds": [
+          "SCIM_User"
+        ],
+        "properties": {
+          "externalId": "00uw2zpneles0uPks1d7",
+          "name": "d838cace-1e3a-11f1-8c08-45899488c475",
+          "displayName": "Ahmad Pillai",
+          "userName": "ahmad.pillai@k-nexusglobal.com",
+          "profileUrl": "https://api.github.com/scim/v2/enterprises/k-nexus-global/Users/d838cace-1e3a-11f1-8c08-45899488c475",
+          "givenName": "Ahmad",
+          "mail": "ahmad.pillai@k-nexusglobal.com",
+          "enabled": true,
+          "familyName": "Pillai",
+          "id": "64383338636163652D316533612D313166312D386330382D343538393934383863343735",
+          "enterprise": "k-nexus-global"
+        }
+      },
+      {
+        "id": "65373434386162322D316533612D313166312D396137612D326464653330633231366265",
+        "kinds": [
+          "SCIM_User"
+        ],
+        "properties": {
+          "externalId": "00uw1ipxu3hZLyKcC1d7",
+          "name": "e7448ab2-1e3a-11f1-9a7a-2dde30c216be",
+          "displayName": "Justin Mitchell",
+          "userName": "justin.mitchell@k-nexusglobal.com",
+          "profileUrl": "https://api.github.com/scim/v2/enterprises/k-nexus-global/Users/e7448ab2-1e3a-11f1-9a7a-2dde30c216be",
+          "givenName": "Justin",
+          "mail": "justin.mitchell@k-nexusglobal.com",
+          "enabled": true,
+          "familyName": "Mitchell",
+          "id": "65373434386162322D316533612D313166312D396137612D326464653330633231366265",
+          "enterprise": "k-nexus-global"
+        }
+      },
+      {
+        "id": "65653636346135362D316533612D313166312D393763322D326665306365633262663964",
+        "kinds": [
+          "SCIM_User"
+        ],
+        "properties": {
+          "externalId": "00uw4tjeza2OPy1Wp1d7",
+          "name": "ee664a56-1e3a-11f1-97c2-2fe0cec2bf9d",
+          "displayName": "Javier G??mez",
+          "userName": "javier.gomez@k-nexusglobal.com",
+          "profileUrl": "https://api.github.com/scim/v2/enterprises/k-nexus-global/Users/ee664a56-1e3a-11f1-97c2-2fe0cec2bf9d",
+          "givenName": "Javier",
+          "mail": "javier.gomez@k-nexusglobal.com",
+          "enabled": true,
+          "familyName": "G??mez",
+          "id": "65653636346135362D316533612D313166312D393763322D326665306365633262663964",
+          "enterprise": "k-nexus-global"
+        }
+      },
+      {
+        "id": "66343031623066652D316533612D313166312D386365302D666130346638646235376331",
+        "kinds": [
+          "SCIM_User"
+        ],
+        "properties": {
+          "externalId": "00uw4tvr5sRREvnt21d7",
+          "name": "f401b0fe-1e3a-11f1-8ce0-fa04f8db57c1",
+          "displayName": "Priya Abdullah",
+          "userName": "priya.abdullah@k-nexusglobal.com",
+          "profileUrl": "https://api.github.com/scim/v2/enterprises/k-nexus-global/Users/f401b0fe-1e3a-11f1-8ce0-fa04f8db57c1",
+          "givenName": "Priya",
+          "mail": "priya.abdullah@k-nexusglobal.com",
+          "enabled": true,
+          "familyName": "Abdullah",
+          "id": "66343031623066652D316533612D313166312D386365302D666130346638646235376331",
+          "enterprise": "k-nexus-global"
+        }
+      },
+      {
+        "id": "66353561623565612D316533612D313166312D383134372D633738616531373033356330",
+        "kinds": [
+          "SCIM_User"
+        ],
+        "properties": {
+          "externalId": "00uw4twizsx1KrIa11d7",
+          "name": "f55ab5ea-1e3a-11f1-8147-c78ae17035c0",
+          "displayName": "Service - SVC_AP_APP08",
+          "userName": "svc_ap_app08@k-nexusglobal.com",
+          "profileUrl": "https://api.github.com/scim/v2/enterprises/k-nexus-global/Users/f55ab5ea-1e3a-11f1-8147-c78ae17035c0",
+          "givenName": "Service",
+          "mail": "svc_ap_app08@k-nexusglobal.com",
+          "enabled": true,
+          "familyName": "- SVC_AP_APP08",
+          "id": "66353561623565612D316533612D313166312D383134372D633738616531373033356330",
+          "enterprise": "k-nexus-global"
+        }
+      }
+    ],
+    "edges": [
+      {
+        "kind": "SCIM_Provisioned",
+        "start": {
+          "value": "00uw2zpneles0uPks1d7"
+        },
+        "end": {
+          "value": "64383338636163652D316533612D313166312D386330382D343538393934383863343735"
+        },
+        "properties": {
+          "traversable": true
+        }
+      },
+      {
+        "kind": "SCIM_Provisioned",
+        "start": {
+          "value": "00uw1ipxu3hZLyKcC1d7"
+        },
+        "end": {
+          "value": "65373434386162322D316533612D313166312D396137612D326464653330633231366265"
+        },
+        "properties": {
+          "traversable": true
+        }
+      },
+      {
+        "kind": "SCIM_Provisioned",
+        "start": {
+          "value": "00uw4tjeza2OPy1Wp1d7"
+        },
+        "end": {
+          "value": "65653636346135362D316533612D313166312D393763322D326665306365633262663964"
+        },
+        "properties": {
+          "traversable": true
+        }
+      },
+      {
+        "kind": "SCIM_Provisioned",
+        "start": {
+          "value": "00uw4tvr5sRREvnt21d7"
+        },
+        "end": {
+          "value": "66343031623066652D316533612D313166312D386365302D666130346638646235376331"
+        },
+        "properties": {
+          "traversable": true
+        }
+      },
+      {
+        "kind": "SCIM_Provisioned",
+        "start": {
+          "value": "00uw4twizsx1KrIa11d7"
+        },
+        "end": {
+          "value": "66353561623565612D316533612D313166312D383134372D633738616531373033356330"
+        },
+        "properties": {
+          "traversable": true
+        }
+      }
+    ]
+  }
+}

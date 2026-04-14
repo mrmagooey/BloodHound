@@ -147,6 +147,10 @@ func TestKNexusDiagnostic(t *testing.T) {
 	db := openGraph(t)
 	ingestZipFull(ctx, t, db, zipPath)
 
+	preAnalysisNodes := queryCount(ctx, t, db, "MATCH (n) RETURN count(n)")
+	preAnalysisRels := queryCount(ctx, t, db, "MATCH ()-[r]->() RETURN count(r)")
+	t.Logf("PRE-ANALYSIS: nodes=%d, relationships=%d", preAnalysisNodes, preAnalysisRels)
+
 	t.Log("=== Running AD + Azure analysis ===")
 	runKNexusAnalysis(ctx, t, db)
 

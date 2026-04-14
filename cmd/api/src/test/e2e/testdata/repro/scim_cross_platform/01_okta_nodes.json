@@ -1,0 +1,584 @@
+{
+  "metadata": {
+    "source_kind": "Okta"
+  },
+  "graph": {
+    "nodes": [
+      {
+        "id": "00uw4twizsx1KrIa11d7",
+        "properties": {
+          "activated": "2026-03-11T19:06:51+00:00",
+          "created": "2026-03-11T19:06:51+00:00",
+          "credentialProviderName": "OKTA",
+          "credentialProviderType": "OKTA",
+          "displayName": "Service - SVC_AP_APP08",
+          "email": "svc_ap_app08@k-nexusglobal.com",
+          "enabled": true,
+          "firstName": "Service",
+          "hasRoleAssignments": false,
+          "lastName": "- SVC_AP_APP08",
+          "lastUpdated": "2026-03-16T17:46:37+00:00",
+          "login": "svc_ap_app08@k-nexusglobal.com",
+          "name": "svc_ap_app08@k-nexusglobal.com",
+          "oktaDomain": "k-nexusglobal-github.okta.com",
+          "passwordChanged": "2026-03-11T19:06:51+00:00",
+          "status": "ACTIVE"
+        },
+        "kinds": [
+          "Okta_User"
+        ]
+      },
+      {
+        "id": "00uw1ipxu3hZLyKcC1d7",
+        "properties": {
+          "activated": "2026-03-09T17:21:00+00:00",
+          "created": "2026-03-09T17:21:00+00:00",
+          "credentialProviderName": "OKTA",
+          "credentialProviderType": "OKTA",
+          "displayName": "Justin Mitchell",
+          "email": "justin.mitchell@k-nexusglobal.com",
+          "enabled": true,
+          "firstName": "Justin",
+          "hasRoleAssignments": false,
+          "lastName": "Mitchell",
+          "lastUpdated": "2026-03-16T17:54:24+00:00",
+          "login": "justin.mitchell@k-nexusglobal.com",
+          "name": "justin.mitchell@k-nexusglobal.com",
+          "oktaDomain": "k-nexusglobal-github.okta.com",
+          "status": "PROVISIONED"
+        },
+        "kinds": [
+          "Okta_User"
+        ]
+      },
+      {
+        "id": "00uw4tjeza2OPy1Wp1d7",
+        "properties": {
+          "activated": "2026-03-11T19:02:03+00:00",
+          "created": "2026-03-11T19:02:03+00:00",
+          "credentialProviderName": "OKTA",
+          "credentialProviderType": "OKTA",
+          "displayName": "Javier G\u00f3mez",
+          "email": "javier.gomez@k-nexusglobal.com",
+          "enabled": true,
+          "firstName": "Javier",
+          "hasRoleAssignments": false,
+          "lastName": "G\u00f3mez",
+          "lastUpdated": "2026-03-16T17:53:19+00:00",
+          "login": "javier.gomez@k-nexusglobal.com",
+          "name": "javier.gomez@k-nexusglobal.com",
+          "oktaDomain": "k-nexusglobal-github.okta.com",
+          "passwordChanged": "2026-03-11T19:02:03+00:00",
+          "status": "ACTIVE"
+        },
+        "kinds": [
+          "Okta_User"
+        ]
+      },
+      {
+        "id": "00uw2zpneles0uPks1d7",
+        "properties": {
+          "activated": "2026-03-10T17:41:22+00:00",
+          "city": "Singapore",
+          "created": "2026-03-10T17:41:22+00:00",
+          "credentialProviderName": "OKTA",
+          "credentialProviderType": "OKTA",
+          "department": "Security Architecture & Engineering",
+          "displayName": "Ahmad Pillai",
+          "email": "ahmad.pillai@k-nexusglobal.com",
+          "enabled": true,
+          "firstName": "Ahmad",
+          "hasRoleAssignments": false,
+          "lastName": "Pillai",
+          "lastUpdated": "2026-03-16T17:43:38+00:00",
+          "login": "ahmad.pillai@k-nexusglobal.com",
+          "name": "ahmad.pillai@k-nexusglobal.com",
+          "oktaDomain": "k-nexusglobal-github.okta.com",
+          "passwordChanged": "2026-03-10T17:41:22+00:00",
+          "status": "ACTIVE",
+          "title": "HR Manager"
+        },
+        "kinds": [
+          "Okta_User"
+        ]
+      },
+      {
+        "id": "00uw4tvr5sRREvnt21d7",
+        "properties": {
+          "activated": "2026-03-11T19:04:15+00:00",
+          "city": "Singapore",
+          "created": "2026-03-11T19:04:15+00:00",
+          "credentialProviderName": "OKTA",
+          "credentialProviderType": "OKTA",
+          "department": "Manufacturing & Supply Chain",
+          "displayName": "Priya Abdullah",
+          "email": "priya.abdullah@k-nexusglobal.com",
+          "enabled": true,
+          "firstName": "Priya",
+          "hasRoleAssignments": false,
+          "lastName": "Abdullah",
+          "lastUpdated": "2026-03-16T17:45:49+00:00",
+          "login": "priya.abdullah@k-nexusglobal.com",
+          "name": "priya.abdullah@k-nexusglobal.com",
+          "oktaDomain": "k-nexusglobal-github.okta.com",
+          "passwordChanged": "2026-03-11T19:04:15+00:00",
+          "status": "ACTIVE",
+          "title": "Senior Production Manager"
+        },
+        "kinds": [
+          "Okta_User"
+        ]
+      }
+    ],
+    "edges": [
+      {
+        "kind": "Okta_OrgAdmin",
+        "start": {
+          "match_by": "id",
+          "value": "0oaw2z09cm3py8dLG1d7",
+          "kind": "Okta_Application"
+        },
+        "end": {
+          "match_by": "id",
+          "value": "00uw4tvr5sRREvnt21d7",
+          "kind": "Okta_User"
+        },
+        "properties": {}
+      },
+      {
+        "kind": "Okta_OrgAdmin",
+        "start": {
+          "match_by": "id",
+          "value": "0oaw2z09cm3py8dLG1d7",
+          "kind": "Okta_Application"
+        },
+        "end": {
+          "match_by": "id",
+          "value": "00uw2zpneles0uPks1d7",
+          "kind": "Okta_User"
+        },
+        "properties": {}
+      },
+      {
+        "kind": "Okta_OrgAdmin",
+        "start": {
+          "match_by": "id",
+          "value": "0oaw2z09cm3py8dLG1d7",
+          "kind": "Okta_Application"
+        },
+        "end": {
+          "match_by": "id",
+          "value": "00uw4tjeza2OPy1Wp1d7",
+          "kind": "Okta_User"
+        },
+        "properties": {}
+      },
+      {
+        "kind": "Okta_OrgAdmin",
+        "start": {
+          "match_by": "id",
+          "value": "0oaw2z09cm3py8dLG1d7",
+          "kind": "Okta_Application"
+        },
+        "end": {
+          "match_by": "id",
+          "value": "00uw1ipxu3hZLyKcC1d7",
+          "kind": "Okta_User"
+        },
+        "properties": {}
+      },
+      {
+        "kind": "Okta_OrgAdmin",
+        "start": {
+          "match_by": "id",
+          "value": "0oaw2z09cm3py8dLG1d7",
+          "kind": "Okta_Application"
+        },
+        "end": {
+          "match_by": "id",
+          "value": "00uw4twizsx1KrIa11d7",
+          "kind": "Okta_User"
+        },
+        "properties": {}
+      },
+      {
+        "kind": "Okta_Contains",
+        "start": {
+          "match_by": "id",
+          "value": "00ovi5gulamRB5Pue1d7",
+          "kind": "Okta_Organization"
+        },
+        "end": {
+          "match_by": "id",
+          "value": "00uw4twizsx1KrIa11d7",
+          "kind": "Okta_User"
+        },
+        "properties": {}
+      },
+      {
+        "kind": "Okta_Contains",
+        "start": {
+          "match_by": "id",
+          "value": "00ovi5gulamRB5Pue1d7",
+          "kind": "Okta_Organization"
+        },
+        "end": {
+          "match_by": "id",
+          "value": "00uw4tvr5sRREvnt21d7",
+          "kind": "Okta_User"
+        },
+        "properties": {}
+      },
+      {
+        "kind": "Okta_Contains",
+        "start": {
+          "match_by": "id",
+          "value": "00ovi5gulamRB5Pue1d7",
+          "kind": "Okta_Organization"
+        },
+        "end": {
+          "match_by": "id",
+          "value": "00uw4tjeza2OPy1Wp1d7",
+          "kind": "Okta_User"
+        },
+        "properties": {}
+      },
+      {
+        "kind": "Okta_Contains",
+        "start": {
+          "match_by": "id",
+          "value": "00ovi5gulamRB5Pue1d7",
+          "kind": "Okta_Organization"
+        },
+        "end": {
+          "match_by": "id",
+          "value": "00uw2zpneles0uPks1d7",
+          "kind": "Okta_User"
+        },
+        "properties": {}
+      },
+      {
+        "kind": "Okta_Contains",
+        "start": {
+          "match_by": "id",
+          "value": "00ovi5gulamRB5Pue1d7",
+          "kind": "Okta_Organization"
+        },
+        "end": {
+          "match_by": "id",
+          "value": "00uw1ipxu3hZLyKcC1d7",
+          "kind": "Okta_User"
+        },
+        "properties": {}
+      },
+      {
+        "kind": "Okta_MemberOf",
+        "start": {
+          "match_by": "id",
+          "value": "00uw4twizsx1KrIa11d7",
+          "kind": "Okta_User"
+        },
+        "end": {
+          "match_by": "id",
+          "value": "00gvi5gunaqequ9Y71d7",
+          "kind": "Okta_Group"
+        },
+        "properties": {}
+      },
+      {
+        "kind": "Okta_MemberOf",
+        "start": {
+          "match_by": "id",
+          "value": "00uw4tvr5sRREvnt21d7",
+          "kind": "Okta_User"
+        },
+        "end": {
+          "match_by": "id",
+          "value": "00gvi5gunaqequ9Y71d7",
+          "kind": "Okta_Group"
+        },
+        "properties": {}
+      },
+      {
+        "kind": "Okta_MemberOf",
+        "start": {
+          "match_by": "id",
+          "value": "00uw4tjeza2OPy1Wp1d7",
+          "kind": "Okta_User"
+        },
+        "end": {
+          "match_by": "id",
+          "value": "00gvi5gunaqequ9Y71d7",
+          "kind": "Okta_Group"
+        },
+        "properties": {}
+      },
+      {
+        "kind": "Okta_MemberOf",
+        "start": {
+          "match_by": "id",
+          "value": "00uw2zpneles0uPks1d7",
+          "kind": "Okta_User"
+        },
+        "end": {
+          "match_by": "id",
+          "value": "00gvi5gunaqequ9Y71d7",
+          "kind": "Okta_Group"
+        },
+        "properties": {}
+      },
+      {
+        "kind": "Okta_MemberOf",
+        "start": {
+          "match_by": "id",
+          "value": "00uw1ipxu3hZLyKcC1d7",
+          "kind": "Okta_User"
+        },
+        "end": {
+          "match_by": "id",
+          "value": "00gvi5gunaqequ9Y71d7",
+          "kind": "Okta_Group"
+        },
+        "properties": {}
+      },
+      {
+        "kind": "Okta_MemberOf",
+        "start": {
+          "match_by": "id",
+          "value": "00uw2zpneles0uPks1d7",
+          "kind": "Okta_User"
+        },
+        "end": {
+          "match_by": "id",
+          "value": "00gw31r37m80XBcvc1d7",
+          "kind": "Okta_Group"
+        },
+        "properties": {}
+      },
+      {
+        "kind": "Okta_MemberOf",
+        "start": {
+          "match_by": "id",
+          "value": "00uw4tjeza2OPy1Wp1d7",
+          "kind": "Okta_User"
+        },
+        "end": {
+          "match_by": "id",
+          "value": "00gw6pwvc8meaMXkq1d7",
+          "kind": "Okta_Group"
+        },
+        "properties": {}
+      },
+      {
+        "kind": "Okta_MemberOf",
+        "start": {
+          "match_by": "id",
+          "value": "00uw4twizsx1KrIa11d7",
+          "kind": "Okta_User"
+        },
+        "end": {
+          "match_by": "id",
+          "value": "00gw2zhm7gbH7h2EQ1d7",
+          "kind": "Okta_Group"
+        },
+        "properties": {}
+      },
+      {
+        "kind": "Okta_MemberOf",
+        "start": {
+          "match_by": "id",
+          "value": "00uw4tvr5sRREvnt21d7",
+          "kind": "Okta_User"
+        },
+        "end": {
+          "match_by": "id",
+          "value": "00gw2zhm7gbH7h2EQ1d7",
+          "kind": "Okta_Group"
+        },
+        "properties": {}
+      },
+      {
+        "kind": "Okta_MemberOf",
+        "start": {
+          "match_by": "id",
+          "value": "00uw4tjeza2OPy1Wp1d7",
+          "kind": "Okta_User"
+        },
+        "end": {
+          "match_by": "id",
+          "value": "00gw2zhm7gbH7h2EQ1d7",
+          "kind": "Okta_Group"
+        },
+        "properties": {}
+      },
+      {
+        "kind": "Okta_MemberOf",
+        "start": {
+          "match_by": "id",
+          "value": "00uw2zpneles0uPks1d7",
+          "kind": "Okta_User"
+        },
+        "end": {
+          "match_by": "id",
+          "value": "00gw2zhm7gbH7h2EQ1d7",
+          "kind": "Okta_Group"
+        },
+        "properties": {}
+      },
+      {
+        "kind": "Okta_MemberOf",
+        "start": {
+          "match_by": "id",
+          "value": "00uw1ipxu3hZLyKcC1d7",
+          "kind": "Okta_User"
+        },
+        "end": {
+          "match_by": "id",
+          "value": "00gw2zhm7gbH7h2EQ1d7",
+          "kind": "Okta_Group"
+        },
+        "properties": {}
+      },
+      {
+        "kind": "Okta_ResourceSetContains",
+        "start": {
+          "match_by": "id",
+          "value": "iamweiqqfklUIXCEV1d7",
+          "kind": "Okta_ResourceSet"
+        },
+        "end": {
+          "match_by": "id",
+          "value": "00uw4tvr5sRREvnt21d7",
+          "kind": "Okta_User"
+        },
+        "properties": {}
+      },
+      {
+        "kind": "Okta_ResourceSetContains",
+        "start": {
+          "match_by": "id",
+          "value": "iamweiqqfklUIXCEV1d7",
+          "kind": "Okta_ResourceSet"
+        },
+        "end": {
+          "match_by": "id",
+          "value": "00uw2zpneles0uPks1d7",
+          "kind": "Okta_User"
+        },
+        "properties": {}
+      },
+      {
+        "kind": "Okta_ResourceSetContains",
+        "start": {
+          "match_by": "id",
+          "value": "iamweiqqfklUIXCEV1d7",
+          "kind": "Okta_ResourceSet"
+        },
+        "end": {
+          "match_by": "id",
+          "value": "00uw4tjeza2OPy1Wp1d7",
+          "kind": "Okta_User"
+        },
+        "properties": {}
+      },
+      {
+        "kind": "Okta_ResourceSetContains",
+        "start": {
+          "match_by": "id",
+          "value": "iamweiqqfklUIXCEV1d7",
+          "kind": "Okta_ResourceSet"
+        },
+        "end": {
+          "match_by": "id",
+          "value": "00uw1ipxu3hZLyKcC1d7",
+          "kind": "Okta_User"
+        },
+        "properties": {}
+      },
+      {
+        "kind": "Okta_ResourceSetContains",
+        "start": {
+          "match_by": "id",
+          "value": "iamweiqqfklUIXCEV1d7",
+          "kind": "Okta_ResourceSet"
+        },
+        "end": {
+          "match_by": "id",
+          "value": "00uw4twizsx1KrIa11d7",
+          "kind": "Okta_User"
+        },
+        "properties": {}
+      },
+      {
+        "kind": "Okta_UserPush",
+        "start": {
+          "match_by": "id",
+          "value": "00uw4twizsx1KrIa11d7",
+          "kind": "Okta_User"
+        },
+        "end": {
+          "match_by": "id",
+          "value": "0oaw6bg33cTtiBxS31d7",
+          "kind": "Okta_Application"
+        },
+        "properties": {}
+      },
+      {
+        "kind": "Okta_UserPush",
+        "start": {
+          "match_by": "id",
+          "value": "00uw4tvr5sRREvnt21d7",
+          "kind": "Okta_User"
+        },
+        "end": {
+          "match_by": "id",
+          "value": "0oaw6bg33cTtiBxS31d7",
+          "kind": "Okta_Application"
+        },
+        "properties": {}
+      },
+      {
+        "kind": "Okta_UserPush",
+        "start": {
+          "match_by": "id",
+          "value": "00uw4tjeza2OPy1Wp1d7",
+          "kind": "Okta_User"
+        },
+        "end": {
+          "match_by": "id",
+          "value": "0oaw6bg33cTtiBxS31d7",
+          "kind": "Okta_Application"
+        },
+        "properties": {}
+      },
+      {
+        "kind": "Okta_UserPush",
+        "start": {
+          "match_by": "id",
+          "value": "00uw1ipxu3hZLyKcC1d7",
+          "kind": "Okta_User"
+        },
+        "end": {
+          "match_by": "id",
+          "value": "0oaw6bg33cTtiBxS31d7",
+          "kind": "Okta_Application"
+        },
+        "properties": {}
+      },
+      {
+        "kind": "Okta_UserPush",
+        "start": {
+          "match_by": "id",
+          "value": "00uw2zpneles0uPks1d7",
+          "kind": "Okta_User"
+        },
+        "end": {
+          "match_by": "id",
+          "value": "0oaw6bg33cTtiBxS31d7",
+          "kind": "Okta_Application"
+        },
+        "properties": {}
+      }
+    ]
+  }
+}
