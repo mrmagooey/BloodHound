@@ -228,7 +228,14 @@ func (s *GraphifyService) ProcessIngestFile(ic *IngestContext, task model.Ingest
 
 		errs := errorlist.NewBuilder()
 
-		return fileData, s.graphdb.BatchOperation(ic.Ctx, func(batch graph.Batch) error {
+		// Snapshot the graph's named-node state before the batch begins so that
+		// name-based endpoint resolution only sees pre-batch nodes, matching the
+		// read-isolation semantics of Neo4j (Option C).
+		if err := s.endpointResolver.PopulateSnapshot(ic.Ctx); err != nil {
+			slog.WarnContext(ic.Ctx, "Failed to populate resolver snapshot; falling back to live resolution", attr.Error(err))
+		}
+
+		batchErr := s.graphdb.BatchOperation(ic.Ctx, func(batch graph.Batch) error {
 			// bind batch to ingest context now that its in scope.
 			ic.BindBatchUpdater(batch)
 			for i, data := range fileData {
@@ -263,6 +270,12 @@ func (s *GraphifyService) ProcessIngestFile(ic *IngestContext, task model.Ingest
 
 			return errs.Build()
 		})
+
+		// Clear the snapshot so the resolver returns to live-query mode for the
+		// next batch. Always called regardless of batch success/failure.
+		s.endpointResolver.ClearSnapshot()
+
+		return fileData, batchErr
 	}
 }
 

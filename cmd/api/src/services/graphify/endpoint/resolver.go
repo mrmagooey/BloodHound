@@ -17,12 +17,14 @@ package endpoint
 
 import (
 	"context"
+	"strings"
 	"sync"
 
 	"github.com/specterops/bloodhound/packages/go/ein"
 	"github.com/specterops/bloodhound/packages/go/errorlist"
 	"github.com/specterops/dawgs/cache"
 	"github.com/specterops/dawgs/graph"
+	"github.com/specterops/dawgs/query"
 	"github.com/specterops/dawgs/util/channels"
 )
 
@@ -40,6 +42,10 @@ type Resolver struct {
 	started          bool
 	workerErrors     *errorlist.ErrorBuilder
 	stateLock        sync.Mutex
+	// snapshot is an optional frozen view of lowerName→objectid populated before a
+	// BatchOperation begins. When non-nil, name-based resolution uses this map
+	// instead of live DB queries, matching Neo4j's read-isolation semantics.
+	snapshot map[string]string
 }
 
 // NewResolver initializes a new Resolver instance with the provided database connection
@@ -50,6 +56,84 @@ func NewResolver(db graph.Database) *Resolver {
 		cacheKeyDigester: NewCacheEntryDigester(),
 		cache:            cache.NewSieve[uint64, ein.IngestibleEndpoint](500_000),
 	}
+}
+
+// PopulateSnapshot takes a pre-batch snapshot of all named nodes in the graph
+// (lowerName → objectid). While the snapshot is active, name-based resolution
+// uses this frozen map instead of live DB queries, which matches Neo4j's
+// read-isolation semantics and prevents in-batch nodes from being resolved.
+// It also resets the sieve cache so stale entries from previous batches are evicted.
+func (s *Resolver) PopulateSnapshot(ctx context.Context) error {
+	snap := make(map[string]string)
+
+	if err := s.db.ReadTransaction(ctx, func(tx graph.Transaction) error {
+		return tx.Nodes().Filter(
+			query.Exists(query.NodeProperty("name")),
+		).Query(func(results graph.Result) error {
+			defer results.Close()
+
+			for results.Next() {
+				var (
+					name     string
+					objectID string
+				)
+
+				if err := results.Scan(&name, &objectID); err != nil {
+					return err
+				}
+
+				snap[strings.ToLower(name)] = objectID
+			}
+
+			return results.Error()
+		}, query.Returning(
+			query.NodeProperty("name"),
+			query.NodeProperty("objectid"),
+		))
+	}); err != nil {
+		return err
+	}
+
+	s.fieldLock.Lock()
+	defer s.fieldLock.Unlock()
+
+	s.snapshot = snap
+	// Reset the sieve cache to evict any stale entries from prior batches.
+	s.cache = cache.NewSieve[uint64, ein.IngestibleEndpoint](500_000)
+
+	return nil
+}
+
+// ClearSnapshot removes the frozen snapshot map, restoring live DB query behaviour
+// for name-based resolution. Call this after a BatchOperation completes.
+func (s *Resolver) ClearSnapshot() {
+	s.fieldLock.Lock()
+	defer s.fieldLock.Unlock()
+
+	s.snapshot = nil
+}
+
+// snapshotLookupByName returns the objectid for a node whose lowercased name
+// equals lowerName, using the frozen snapshot if one is active.
+// Returns ("", false) when no snapshot is set or the name is not found.
+func (s *Resolver) snapshotLookupByName(lowerName string) (string, bool) {
+	s.fieldLock.RLock()
+	defer s.fieldLock.RUnlock()
+
+	if s.snapshot == nil {
+		return "", false
+	}
+
+	objectID, found := s.snapshot[lowerName]
+	return objectID, found
+}
+
+// snapshotIsActive returns true when a frozen snapshot map is currently set.
+func (s *Resolver) snapshotIsActive() bool {
+	s.fieldLock.RLock()
+	defer s.fieldLock.RUnlock()
+
+	return s.snapshot != nil
 }
 
 // Submit attempts to queue an IngestibleRelationship for processing.
@@ -106,7 +190,34 @@ func (s *Resolver) dbLoop(ctx context.Context) func(tx graph.Transaction) error 
 				ingestEntry.Source = cachedEntry
 			} else {
 				switch ingestEntry.Source.MatchBy {
-				case ein.MatchByProperty, ein.MatchByName:
+				case ein.MatchByName:
+					// When a snapshot is active, resolve name lookups from the frozen
+					// pre-batch map so that nodes written during this batch are invisible,
+					// matching Neo4j's read-isolation semantics.
+					if objectID, found := s.snapshotLookupByName(strings.ToLower(ingestEntry.Source.Value)); found {
+						resolved := ein.IngestibleEndpoint{
+							Kind:    ingestEntry.Source.Kind,
+							MatchBy: ein.MatchByID,
+							Value:   objectID,
+						}
+						ingestEntry.Source = resolved
+						s.cacheEndpoint(cacheKey, resolved)
+					} else if s.snapshotIsActive() {
+						// Snapshot is set but name not found — drop this edge (matches Neo4j behaviour)
+						s.addWorkerError(newPropertyMatcherError(ingestEntry.Source, graph.ErrNoResultsFound))
+						continue
+					} else {
+						// No snapshot: fall through to live DB resolution
+						if resolvedEndpoint, err := resolveIngestibleEndpoint(tx, ingestEntry.Source); err != nil {
+							s.addWorkerError(err)
+							continue
+						} else {
+							ingestEntry.Source = resolvedEndpoint
+							s.cacheEndpoint(cacheKey, resolvedEndpoint)
+						}
+					}
+
+				case ein.MatchByProperty:
 					if resolvedEndpoint, err := resolveIngestibleEndpoint(tx, ingestEntry.Source); err != nil {
 						s.addWorkerError(err)
 						continue
@@ -126,7 +237,34 @@ func (s *Resolver) dbLoop(ctx context.Context) func(tx graph.Transaction) error 
 				ingestEntry.Target = cachedEntry
 			} else {
 				switch ingestEntry.Target.MatchBy {
-				case ein.MatchByProperty, ein.MatchByName:
+				case ein.MatchByName:
+					// When a snapshot is active, resolve name lookups from the frozen
+					// pre-batch map so that nodes written during this batch are invisible,
+					// matching Neo4j's read-isolation semantics.
+					if objectID, found := s.snapshotLookupByName(strings.ToLower(ingestEntry.Target.Value)); found {
+						resolved := ein.IngestibleEndpoint{
+							Kind:    ingestEntry.Target.Kind,
+							MatchBy: ein.MatchByID,
+							Value:   objectID,
+						}
+						ingestEntry.Target = resolved
+						s.cacheEndpoint(cacheKey, resolved)
+					} else if s.snapshotIsActive() {
+						// Snapshot is set but name not found — drop this edge (matches Neo4j behaviour)
+						s.addWorkerError(newPropertyMatcherError(ingestEntry.Target, graph.ErrNoResultsFound))
+						continue
+					} else {
+						// No snapshot: fall through to live DB resolution
+						if resolvedEndpoint, err := resolveIngestibleEndpoint(tx, ingestEntry.Target); err != nil {
+							s.addWorkerError(err)
+							continue
+						} else {
+							ingestEntry.Target = resolvedEndpoint
+							s.cacheEndpoint(cacheKey, resolvedEndpoint)
+						}
+					}
+
+				case ein.MatchByProperty:
 					if resolvedEndpoint, err := resolveIngestibleEndpoint(tx, ingestEntry.Target); err != nil {
 						s.addWorkerError(err)
 						continue

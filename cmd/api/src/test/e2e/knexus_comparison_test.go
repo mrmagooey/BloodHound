@@ -196,6 +196,79 @@ var knexusPresetQueries = []presetQuery{
 		Name:   "Distinct relationship types",
 		Cypher: `MATCH ()-[r]->() RETURN DISTINCT type(r) AS relationType ORDER BY relationType`,
 	},
+
+	// --- Diagnostic: SCIM/cross-platform node divergence ---
+	// These queries target the 706-node kglite/Neo4j divergence in the KNexus dataset.
+
+	// Per-label node counts for cross-platform labels
+	{
+		Name:   "SCIM nodes",
+		Cypher: `MATCH (n:SCIM) RETURN count(n) AS scim_nodes`,
+	},
+	{
+		Name:   "Okta nodes",
+		Cypher: `MATCH (n:Okta) RETURN count(n) AS okta_nodes`,
+	},
+	{
+		Name:   "Base nodes",
+		Cypher: `MATCH (n:Base) RETURN count(n) AS base_nodes`,
+	},
+	{
+		Name:   "SCIM_User nodes",
+		Cypher: `MATCH (n:SCIM_User) RETURN count(n) AS scim_user_nodes`,
+	},
+	{
+		Name:   "Okta_User nodes",
+		Cypher: `MATCH (n:Okta_User) RETURN count(n) AS okta_user_nodes`,
+	},
+
+	// Objectid duplication analysis
+	{
+		Name:   "Distinct objectids",
+		Cypher: `MATCH (n) WHERE n.objectid IS NOT NULL RETURN count(DISTINCT n.objectid) AS distinct_oids`,
+	},
+	{
+		Name:   "Objectids on >1 node",
+		Cypher: `MATCH (n) WHERE n.objectid IS NOT NULL WITH n.objectid AS oid, count(n) AS cnt WHERE cnt > 1 RETURN count(oid) AS duped_oids`,
+	},
+	{
+		Name:   "Objectid copy distribution",
+		Cypher: `MATCH (n) WHERE n.objectid IS NOT NULL WITH n.objectid AS oid, count(n) AS cnt RETURN cnt AS copies, count(oid) AS num_oids ORDER BY cnt`,
+	},
+	{
+		Name:   "Objectids with 3 copies",
+		Cypher: `MATCH (n) WHERE n.objectid IS NOT NULL WITH n.objectid AS oid, count(n) AS cnt WHERE cnt = 3 RETURN count(oid) AS triple_oids`,
+	},
+
+	// SCIM edge pipeline analysis
+	{
+		Name:   "SCIM_Provisioned edges",
+		Cypher: `MATCH ()-[r:SCIM_Provisioned]->() RETURN count(r) AS scim_provisioned`,
+	},
+	{
+		Name:   "SCIM_MemberOf edges",
+		Cypher: `MATCH ()-[r:SCIM_MemberOf]->() RETURN count(r) AS scim_member_of`,
+	},
+	{
+		Name:   "SCIM_Provisioned start node labels",
+		Cypher: `MATCH (s)-[:SCIM_Provisioned]->() UNWIND labels(s) AS lbl RETURN lbl, count(*) AS c ORDER BY c DESC`,
+	},
+	{
+		Name:   "SCIM_Provisioned end node labels",
+		Cypher: `MATCH ()-[:SCIM_Provisioned]->(e) UNWIND labels(e) AS lbl RETURN lbl, count(*) AS c ORDER BY c DESC`,
+	},
+
+	// SCIM stub nodes (nodes with only :SCIM label and no other platform label)
+	{
+		Name:   "SCIM-only stub nodes",
+		Cypher: `MATCH (n:SCIM) WHERE NOT n:Okta AND NOT n:Base AND NOT n:SCIM_User RETURN count(n) AS scim_stubs`,
+	},
+
+	// Labels breakdown for all nodes by label combination
+	{
+		Name:   "All labels with counts",
+		Cypher: `MATCH (n) UNWIND labels(n) AS lbl RETURN lbl, count(*) AS c ORDER BY c DESC`,
+	},
 }
 
 // knexusAttackPathEdges are attack path edge types to compare after analysis.
