@@ -540,11 +540,16 @@ func TestCompareKNexusOpenGraph(t *testing.T) {
 	kgliteDB := openGraph(t)
 	neo4jDB := openNeo4j(t)
 
-	// Prepare Neo4j
-	clearNeo4j(ctx, t, neo4jDB)
-	require.NoError(t, retryNeo4j(t, "AssertSchema", func() error {
-		return neo4jDB.AssertSchema(ctx, schema.DefaultGraphSchema())
-	}))
+	// BH_REUSE_NEO4J=1 reuses an already-loaded Neo4j; see TestCompareKNexus.
+	reuseNeo4j := os.Getenv("BH_REUSE_NEO4J") == "1" && neo4jHasKNexusData(ctx, t, neo4jDB)
+	if !reuseNeo4j {
+		clearNeo4j(ctx, t, neo4jDB)
+		require.NoError(t, retryNeo4j(t, "AssertSchema", func() error {
+			return neo4jDB.AssertSchema(ctx, schema.DefaultGraphSchema())
+		}))
+	} else {
+		t.Log("BH_REUSE_NEO4J=1: reusing existing Neo4j data (skipped clear + ingest)")
+	}
 
 	ingestSchema := loadIngestSchema(t)
 
@@ -553,9 +558,14 @@ func TestCompareKNexusOpenGraph(t *testing.T) {
 	kIngestDur := ingestZipTolerant(ctx, t, kgliteDB, knexusZip, ingestSchema)
 	t.Logf("  kglite ingest: %s", kIngestDur.Round(time.Millisecond))
 
-	t.Log("=== Ingesting k-nexus-global data into Neo4j ===")
-	nIngestDur := ingestZipTolerant(ctx, t, neo4jDB, knexusZip, ingestSchema)
-	t.Logf("  Neo4j ingest: %s", nIngestDur.Round(time.Millisecond))
+	var nIngestDur time.Duration
+	if reuseNeo4j {
+		t.Log("=== Skipping k-nexus-global ingest into Neo4j (reusing existing data) ===")
+	} else {
+		t.Log("=== Ingesting k-nexus-global data into Neo4j ===")
+		nIngestDur = ingestZipTolerant(ctx, t, neo4jDB, knexusZip, ingestSchema)
+		t.Logf("  Neo4j ingest: %s", nIngestDur.Round(time.Millisecond))
+	}
 
 	// Analysis on both
 	t.Log("=== Running analysis on kglite ===")
