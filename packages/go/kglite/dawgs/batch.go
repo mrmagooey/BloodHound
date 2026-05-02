@@ -43,13 +43,14 @@ const defaultDeleteFlushSize = 500
 type Batch struct {
 	ctx            context.Context
 	driver         *Driver
-	pending        []kglite.BatchQuery
-	pendingEdges   []kglite.EdgeSpec
-	pendingDeletes []uint64 // relationship IDs pending batched DELETE
-	flushSize      int
-	kindsWritten   map[string]bool                // tracks objectids that already have __kinds set
-	oidToIdx       map[string]map[string]uint64 // objectid -> (label -> node index) cache for bulk edge FFI
-	pendingLookups []string          // objectids awaiting node-index lookup after next Cypher flush
+	pending              []kglite.BatchQuery
+	pendingEdges         []kglite.EdgeSpec
+	pendingDeletes       []uint64 // relationship IDs pending batched DELETE
+	flushSize            int
+	kindsWritten         map[string]bool                // tracks objectids that already have __kinds set
+	oidToIdx             map[string]map[string]uint64 // objectid -> (label -> node index) cache for bulk edge FFI
+	pendingLookups       []string                     // objectids awaiting node-index lookup after next Cypher flush
+	pendingDeferredNodes []graph.NodeUpdate           // node updates with empty IdentityKind, deferred until edges have created stubs
 }
 
 func (b *Batch) WithGraph(_ graph.Graph) graph.Batch {
@@ -57,7 +58,24 @@ func (b *Batch) WithGraph(_ graph.Graph) graph.Batch {
 }
 
 func (b *Batch) Commit() error {
-	return b.flush()
+	// First flush all queued Cypher and FFI batches so that every edge MERGE
+	// has run and oidToIdx / oidToKind are fully populated.
+	if err := b.flush(); err != nil {
+		return err
+	}
+	// Then drain the deferred label-less node MERGEs. They MERGE into the
+	// stubs that the edges have already created (matching Neo4j's effective
+	// flush ordering, where nodeUpdateByBuffer only flushes at commit time).
+	if len(b.pendingDeferredNodes) > 0 {
+		if err := b.flushDeferredNodes(); err != nil {
+			return err
+		}
+		// flushDeferredNodes enqueued new Cypher; do a final flush.
+		if err := b.flush(); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // resolvePendingLookups issues a single MATCH query to populate oidToIdx for
@@ -196,6 +214,13 @@ func (b *Batch) flush() error {
 			return err
 		}
 	}
+	// NOTE: pendingDeferredNodes is intentionally NOT drained here. Intermediate
+	// flushes (triggered by maybeFlush when the pending buffer fills) only have
+	// partial oidToKind population, so resolving deferred nodes mid-stream
+	// produces wrong labels for most of them. Deferred nodes are only drained
+	// from Commit() — after every UpdateRelationshipBy has populated oidToKind
+	// for its endpoints. Mirrors Neo4j's nodeUpdateByBuffer behaviour, which
+	// only flushes at session commit, never at intermediate buffer thresholds.
 	// Flush any remaining pending deletes that haven't yet reached the batch threshold.
 	if len(b.pendingDeletes) > 0 {
 		if err := b.flushDeletes(); err != nil {
@@ -351,6 +376,81 @@ func (b *Batch) flushDeletes() error {
 	return nil
 }
 
+// flushDeferredNodes drains pendingDeferredNodes by resolving each label-less
+// node MERGE against either the oidToIdx cache (preferred — it reflects stubs
+// created by edge processing in this same flush cycle) or the node's own Kinds.
+// For each deferred update we build the same MERGE Cypher that
+// buildAndEnqueueNodeMerge produces, but with the label resolved at flush time.
+//
+// This is the second half of the kglite analogue of Neo4j's dawgs driver
+// behaviour — see the comment in UpdateNodeBy and the wire-level capture
+// notes for details.
+func (b *Batch) flushDeferredNodes() error {
+	if len(b.pendingDeferredNodes) == 0 {
+		return nil
+	}
+	deferred := b.pendingDeferredNodes
+	b.pendingDeferredNodes = nil
+	for i := range deferred {
+		update := deferred[i]
+		if update.Node == nil || len(update.Node.Kinds) == 0 {
+			continue
+		}
+		// Resolve a kind for this deferred update.
+		// Preference order:
+		//   1. The first label seen in oidToIdx for this objectid (now reflects
+		//      any stubs created by edge processing during the same BatchOperation).
+		//   2. driver.oidToKind, populated by UpdateRelationshipBy.
+		//   3. The first non-empty Kind on the node itself.
+		kindStr := ""
+		var oid string
+		if update.Node.Properties != nil {
+			if v, ok := update.Node.Properties.Map["objectid"]; ok {
+				if s, ok := v.(string); ok {
+					oid = s
+				}
+			}
+		}
+		if oid != "" && b.oidToIdx != nil {
+			if labelMap, ok := b.oidToIdx[oid]; ok {
+				for label := range labelMap {
+					if label != "" {
+						kindStr = label
+						break
+					}
+				}
+			}
+		}
+		if kindStr == "" && oid != "" && b.driver.oidToKind != nil {
+			if prior := b.driver.oidToKind[oid]; prior != "" {
+				kindStr = prior
+			}
+		}
+		if kindStr == "" {
+			for _, k := range update.Node.Kinds {
+				if k == graph.EmptyKind {
+					continue
+				}
+				if s := k.String(); s != "" {
+					kindStr = s
+					break
+				}
+			}
+		}
+		if kindStr == "" {
+			return fmt.Errorf("kglite: flushDeferredNodes: cannot determine node kind for deferred update")
+		}
+		// Synthesise an update with a non-empty IdentityKind so buildAndEnqueueNodeMerge
+		// uses the resolved kindStr without re-running the lookup chain.
+		synth := update
+		synth.IdentityKind = graph.StringKind(kindStr)
+		if err := b.buildAndEnqueueNodeMerge(synth); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // UpdateNodeBy performs an upsert of a node identified by identity kind and properties.
 // If the identity property is "objectid", the node's index is scheduled for lookup after
 // the next Cypher flush so that subsequent UpdateRelationshipBy calls can use the fast
@@ -360,12 +460,75 @@ func (b *Batch) UpdateNodeBy(update graph.NodeUpdate) error {
 		return fmt.Errorf("kglite: UpdateNodeBy: node must have at least one kind")
 	}
 
+	// Defer label-less MERGEs (empty IdentityKind) until after edges have had a
+	// chance to create :Base stubs. This mirrors the Neo4j dawgs driver, which
+	// keeps separate node and relationship buffers so that the relationship
+	// buffer can flush first (creating :Base stubs) before the node buffer
+	// flushes its label-less MERGE for the same objectid (which then matches
+	// the existing :Base stub via property-only lookup).
+	//
+	// In kglite, MERGE without a label defaults to a synthetic ":Node" label
+	// rather than a property-only match — so flushing the node MERGE first
+	// would create a separate `:GH_ExternalIdentity` node and the later edge
+	// slow-path MERGE would create a separate `:Base` stub. Splitting the
+	// identity. By deferring, we let the edge stubs be created first (with
+	// `:Base`), then the deferred MERGE can resolve the kind from the
+	// resulting oidToIdx cache and MERGE into the existing stub instead.
+	if update.IdentityKind == nil || update.IdentityKind == graph.EmptyKind || update.IdentityKind.String() == "" {
+		// Shallow-copy so caller mutations don't affect the deferred update.
+		copied := update
+		b.pendingDeferredNodes = append(b.pendingDeferredNodes, copied)
+		return nil
+	}
+
+	return b.buildAndEnqueueNodeMerge(update)
+}
+
+// buildAndEnqueueNodeMerge builds the MERGE Cypher for a node update and
+// enqueues it. Used by both the immediate path in UpdateNodeBy and the
+// deferred path in flushDeferredNodes.
+func (b *Batch) buildAndEnqueueNodeMerge(update graph.NodeUpdate) error {
+	// Resolve the MERGE pattern label.
+	//
+	// Neo4j's dawgs driver emits a label-less MERGE (`(n {objectid:X})`) when
+	// IdentityKind is empty, and Cypher's MERGE then matches any existing node
+	// with that property regardless of label. kglite-ffi does not support that
+	// semantic — a label-less MERGE pattern defaults to the synthetic ":Node"
+	// label and creates a brand-new node, splitting the identity.
+	//
+	// To match Neo4j's effective behaviour without engine changes, when
+	// IdentityKind is empty we look up the objectid in `driver.oidToKind`,
+	// which records the first-seen primary label for each objectid (populated
+	// by both UpdateNodeBy and UpdateRelationshipBy below). If we find a
+	// previously-written label for this objectid, we use it as the MERGE
+	// pattern label so the MERGE matches the existing node and the SET
+	// clause can layer on the rest of Node.Kinds. If the objectid hasn't
+	// been seen, we fall back to the first non-empty Kind.
 	kindStr := ""
-	if update.IdentityKind != nil {
+	if update.IdentityKind != nil && !update.IdentityKind.Is(graph.EmptyKind) {
 		kindStr = update.IdentityKind.String()
 	}
 	if kindStr == "" {
-		kindStr = update.Node.Kinds[0].String()
+		if update.Node.Properties != nil {
+			if v, ok := update.Node.Properties.Map["objectid"]; ok {
+				if oid, ok := v.(string); ok && oid != "" && b.driver.oidToKind != nil {
+					if prior := b.driver.oidToKind[oid]; prior != "" {
+						kindStr = prior
+					}
+				}
+			}
+		}
+	}
+	if kindStr == "" {
+		for _, k := range update.Node.Kinds {
+			if k == graph.EmptyKind {
+				continue
+			}
+			if s := k.String(); s != "" {
+				kindStr = s
+				break
+			}
+		}
 	}
 	if kindStr == "" {
 		return fmt.Errorf("kglite: UpdateNodeBy: cannot determine node kind")
@@ -415,11 +578,11 @@ func (b *Batch) UpdateNodeBy(update graph.NodeUpdate) error {
 		}
 	}
 
-	// Populate oidToKind: record the first-seen identity kind for each objectid.
-	// This is used by UpdateRelationshipBy to correct the generic "Base" fallback
-	// when a cross-reference file (empty source_kind) references an OpenGraph node.
-	// Note: we do NOT redirect kindStr here — UpdateNodeBy should use the identity
-	// kind as-is, matching Neo4j's label-specific MERGE behavior.
+	// Populate oidToKind: record the first-seen primary label for each
+	// objectid. This is used by UpdateRelationshipBy to correct the generic
+	// "Base" fallback when a cross-reference file (empty source_kind) references
+	// an OpenGraph node, and by UpdateNodeBy above to resolve the MERGE label
+	// when IdentityKind is empty.
 	if oid, ok := identityMap["objectid"].(string); ok && oid != "" {
 		if b.driver.oidToKind == nil {
 			b.driver.oidToKind = make(map[string]string, 8192)
@@ -432,11 +595,45 @@ func (b *Batch) UpdateNodeBy(update graph.NodeUpdate) error {
 	identityPattern, identityParams := propsPattern("id_", identityMap)
 	setFrag, propParams := setClause("n", "p_", propsMap)
 
-	var cypher string
-	if setFrag == "" {
-		cypher = fmt.Sprintf("MERGE (n:%s %s)", quoteIdent(kindStr), identityPattern)
+	// Build the node MERGE pattern using the resolved kindStr (always non-empty
+	// at this point). The SET fragment below also adds any extra kinds via
+	// `n:Kind` clauses, mirroring Neo4j dawgs cypher.go.
+	var nodePattern string
+	if kindStr != "" {
+		nodePattern = fmt.Sprintf("(n:%s %s)", quoteIdent(kindStr), identityPattern)
 	} else {
-		cypher = fmt.Sprintf("MERGE (n:%s %s) SET %s", quoteIdent(kindStr), identityPattern, setFrag)
+		nodePattern = fmt.Sprintf("(n %s)", identityPattern)
+	}
+
+	// Collect extra labels for SET — every Node.Kind that is not the identity
+	// kind itself (skip empty/EmptyKind). This mirrors Neo4j dawgs cypher.go
+	// which appends `, n:Kind1, n:Kind2, ...` after the property SET clause.
+	var extraLabels []string
+	for _, k := range update.Node.Kinds {
+		if k == graph.EmptyKind {
+			continue
+		}
+		ks := k.String()
+		if ks == "" {
+			continue
+		}
+		if ks == kindStr {
+			continue
+		}
+		extraLabels = append(extraLabels, fmt.Sprintf("n:%s", quoteIdent(ks)))
+	}
+
+	setParts := []string{}
+	if setFrag != "" {
+		setParts = append(setParts, setFrag)
+	}
+	setParts = append(setParts, extraLabels...)
+
+	var cypher string
+	if len(setParts) == 0 {
+		cypher = fmt.Sprintf("MERGE %s", nodePattern)
+	} else {
+		cypher = fmt.Sprintf("MERGE %s SET %s", nodePattern, strings.Join(setParts, ", "))
 	}
 
 	// Schedule a node-index lookup for this objectid so that subsequent
@@ -594,6 +791,40 @@ func (b *Batch) UpdateRelationshipBy(update graph.RelationshipUpdate) error {
 	endKindStr := ""
 	if update.EndIdentityKind != nil && update.EndIdentityKind.String() != "" {
 		endKindStr = ":" + quoteIdent(update.EndIdentityKind.String())
+	}
+
+	// Populate driver.oidToKind for both endpoint objectids using the relationship's
+	// declared identity kinds. UpdateNodeBy reads this map to resolve its MERGE
+	// label when called with an empty IdentityKind, so a later SAML/SCIM IngestNode
+	// for the same objectid will MERGE against the stub already created here.
+	rememberOidKind := func(props *graph.Properties, kind graph.Kind) {
+		if props == nil || kind == nil || kind == graph.EmptyKind {
+			return
+		}
+		ks := kind.String()
+		if ks == "" {
+			return
+		}
+		v, ok := props.Map["objectid"]
+		if !ok {
+			return
+		}
+		oid, ok := v.(string)
+		if !ok || oid == "" {
+			return
+		}
+		if b.driver.oidToKind == nil {
+			b.driver.oidToKind = make(map[string]string, 8192)
+		}
+		if _, seen := b.driver.oidToKind[oid]; !seen {
+			b.driver.oidToKind[oid] = ks
+		}
+	}
+	if update.Start != nil {
+		rememberOidKind(update.Start.Properties, update.StartIdentityKind)
+	}
+	if update.End != nil {
+		rememberOidKind(update.End.Properties, update.EndIdentityKind)
 	}
 
 	// Build identity match maps

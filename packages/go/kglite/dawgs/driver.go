@@ -148,8 +148,10 @@ func (d *Driver) BatchOperation(ctx context.Context, batchDelegate graph.BatchDe
 	if err := batchDelegate(batch); err != nil {
 		return err
 	}
-	// Flush any remaining buffered operations
-	return batch.flush()
+	// Commit also flushes deferred (empty-IdentityKind) node MERGEs after all
+	// edges have populated oidToKind. Calling flush() directly here would skip
+	// that — see Batch.Commit and flushDeferredNodes for the rationale.
+	return batch.Commit()
 }
 
 // Save persists the graph to disk at the configured graph path.

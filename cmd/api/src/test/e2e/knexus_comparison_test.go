@@ -36,6 +36,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -43,8 +44,44 @@ import (
 	"time"
 
 	schema "github.com/specterops/bloodhound/packages/go/graphschema"
+	"github.com/specterops/dawgs/graph"
 	"github.com/stretchr/testify/require"
 )
+
+// neo4jHasKNexusData reports whether the given Neo4j database already holds the
+// post-ingest KNexus dataset. Used by BH_REUSE_NEO4J to skip the slow re-ingest
+// when iterating on kglite-only fixes.
+//
+// We check that Neo4j has at least 11000 nodes — the actual count for the
+// KNexus dataset is ~11187. A lower bound is enough; we assume that if Neo4j is
+// in the right ballpark, the data is what we expect. If not, set BH_REUSE_NEO4J
+// only after a known-good run.
+func neo4jHasKNexusData(ctx context.Context, t *testing.T, db graph.Database) bool {
+	t.Helper()
+	var count int64
+	err := db.ReadTransaction(ctx, func(tx graph.Transaction) error {
+		result := tx.Raw("MATCH (n) RETURN count(n) AS c", nil)
+		defer result.Close()
+		if result.Next() {
+			vals := result.Values()
+			if len(vals) > 0 {
+				switch v := vals[0].(type) {
+				case int64:
+					count = v
+				case int:
+					count = int64(v)
+				}
+			}
+		}
+		return result.Error()
+	})
+	if err != nil {
+		t.Logf("BH_REUSE_NEO4J: probe failed (%v) — falling back to fresh ingest", err)
+		return false
+	}
+	t.Logf("BH_REUSE_NEO4J: Neo4j has %d nodes (need >=11000 to reuse)", count)
+	return count >= 11000
+}
 
 // knexusPresetQueries are preset queries run against the k-nexus-global dataset.
 // They cover the AD, Azure, and cross-platform node types present in the data.
@@ -311,11 +348,18 @@ func TestCompareKNexus(t *testing.T) {
 	kgliteDB := openGraph(t)
 	neo4jDB := openNeo4j(t)
 
-	// Prepare Neo4j
-	clearNeo4j(ctx, t, neo4jDB)
-	require.NoError(t, retryNeo4j(t, "AssertSchema", func() error {
-		return neo4jDB.AssertSchema(ctx, schema.DefaultGraphSchema())
-	}))
+	// Honour BH_REUSE_NEO4J=1: when set, skip clear + AssertSchema + ingest if
+	// Neo4j already holds KNexus data. Speeds up the kglite-fix iteration cycle
+	// (Neo4j's behaviour is invariant across kglite code changes).
+	reuseNeo4j := os.Getenv("BH_REUSE_NEO4J") == "1" && neo4jHasKNexusData(ctx, t, neo4jDB)
+	if !reuseNeo4j {
+		clearNeo4j(ctx, t, neo4jDB)
+		require.NoError(t, retryNeo4j(t, "AssertSchema", func() error {
+			return neo4jDB.AssertSchema(ctx, schema.DefaultGraphSchema())
+		}))
+	} else {
+		t.Log("BH_REUSE_NEO4J=1: reusing existing Neo4j data (skipped clear + ingest)")
+	}
 
 	ingestSchema := loadIngestSchema(t)
 
@@ -324,9 +368,14 @@ func TestCompareKNexus(t *testing.T) {
 	kIngestDur := ingestZipTolerant(ctx, t, kgliteDB, knexusZip, ingestSchema)
 	t.Logf("  kglite ingest: %s", kIngestDur.Round(time.Millisecond))
 
-	t.Log("=== Ingesting k-nexus-global data into Neo4j ===")
-	nIngestDur := ingestZipTolerant(ctx, t, neo4jDB, knexusZip, ingestSchema)
-	t.Logf("  Neo4j ingest: %s", nIngestDur.Round(time.Millisecond))
+	var nIngestDur time.Duration
+	if reuseNeo4j {
+		t.Log("=== Skipping k-nexus-global ingest into Neo4j (reusing existing data) ===")
+	} else {
+		t.Log("=== Ingesting k-nexus-global data into Neo4j ===")
+		nIngestDur = ingestZipTolerant(ctx, t, neo4jDB, knexusZip, ingestSchema)
+		t.Logf("  Neo4j ingest: %s", nIngestDur.Round(time.Millisecond))
+	}
 
 	// Analysis on both
 	t.Log("=== Running analysis on kglite ===")

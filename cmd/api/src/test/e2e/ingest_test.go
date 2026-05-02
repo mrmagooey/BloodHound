@@ -199,8 +199,14 @@ func processZipEntry(_ context.Context, ic *graphify.IngestContext, f *zip.File,
 }
 
 // runAnalysis executes AD and Azure post-processing. Returns the analysis duration.
+// When BH_SKIP_ANALYSIS=1, both phases are bypassed and a zero duration is returned —
+// useful for ingest-time divergence investigations that don't depend on post-processing.
 func runAnalysis(ctx context.Context, t *testing.T, db graph.Database) time.Duration {
 	t.Helper()
+	if os.Getenv("BH_SKIP_ANALYSIS") == "1" {
+		t.Log("BH_SKIP_ANALYSIS=1: skipping AD and Azure post-processing")
+		return 0
+	}
 	start := time.Now()
 
 	counter := analysis.NewCompositionCounter()

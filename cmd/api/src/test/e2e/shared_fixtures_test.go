@@ -116,7 +116,7 @@ func TestMain(m *testing.M) {
 		if err := ingestFixtureZip(ctx, db, adZip, schema, false); err != nil {
 			log.Fatalf("failed to ingest AD data: %v", err)
 		}
-		if err := runFixtureAnalysis(ctx, db); err != nil {
+		if err := maybeRunFixtureAnalysis(ctx, db); err != nil {
 			log.Fatalf("failed to run AD analysis: %v", err)
 		}
 		fixtureADGraph = db
@@ -136,7 +136,7 @@ func TestMain(m *testing.M) {
 		if err := ingestFixtureZip(ctx, db, azureZip, schema, false); err != nil {
 			log.Fatalf("failed to ingest Azure data: %v", err)
 		}
-		if err := runFixtureAnalysis(ctx, db); err != nil {
+		if err := maybeRunFixtureAnalysis(ctx, db); err != nil {
 			log.Fatalf("failed to run Azure analysis: %v", err)
 		}
 		fixtureAzureGraph = db
@@ -159,7 +159,7 @@ func TestMain(m *testing.M) {
 		if err := ingestFixtureZip(ctx, db, azureZip, schema, false); err != nil {
 			log.Fatalf("failed to ingest Azure data into combined graph: %v", err)
 		}
-		if err := runFixtureAnalysis(ctx, db); err != nil {
+		if err := maybeRunFixtureAnalysis(ctx, db); err != nil {
 			log.Fatalf("failed to run combined analysis: %v", err)
 		}
 		fixtureCombinedGraph = db
@@ -180,7 +180,7 @@ func TestMain(m *testing.M) {
 			// K-Nexus ingestion uses tolerant mode — log but don't fail
 			log.Printf("shared fixture: K-Nexus ingest had batch errors (non-fatal): %v", err)
 		}
-		if err := runFixtureAnalysis(ctx, db); err != nil {
+		if err := maybeRunFixtureAnalysis(ctx, db); err != nil {
 			log.Fatalf("failed to run K-Nexus analysis: %v", err)
 		}
 		fixtureKNexusGraph = db
@@ -250,6 +250,17 @@ func runFixtureAnalysis(ctx context.Context, db graph.Database) error {
 		return fmt.Errorf("Azure post-processing: %w", err)
 	}
 	return nil
+}
+
+// maybeRunFixtureAnalysis honors BH_SKIP_ANALYSIS=1 to bypass post-processing.
+// Use this when investigating ingest-time divergences (per-label counts, edge
+// inventory) where the analysis step is irrelevant or known to deadlock.
+func maybeRunFixtureAnalysis(ctx context.Context, db graph.Database) error {
+	if os.Getenv("BH_SKIP_ANALYSIS") == "1" {
+		log.Println("shared fixture: skipping analysis (BH_SKIP_ANALYSIS=1)")
+		return nil
+	}
+	return runFixtureAnalysis(ctx, db)
 }
 
 // cleanupFixtures closes all shared graphs and removes temp directories.
