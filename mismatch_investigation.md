@@ -746,3 +746,71 @@ The single remaining mismatch was tie-break order in `All labels with counts` �
 | #7 Neo4j MERGE has implicit cross-label index match | Ruled out (Neo4j splits the same way kglite does in isolation; what differs is the order of node vs edge MERGE flushes — see headline fix) |
 | #8 (new) dawgs Neo4j buffers nodes and edges separately, edges flush first | **Confirmed root cause for the headline 706-node gap (the GH_ExternalIdentity case)** |
 | #9 (new) Test ingest helpers skip resolver snapshot | **Confirmed root cause for the residual +9 / +689 divergence** |
+
+## Iteration Log (analysis-hang investigation)
+
+**Reproduction**: `TestLoadAndQueryKNexus` (analysis enabled) hangs at
+`Post-processing App Role Assignments measurement_id=88` and never completes
+within a 13-minute timeout. AD pre-processing of the same suite finishes in
+~500 ms; the K-Nexus dataset is the trigger.
+
+**Goroutine dump on timeout** (key frames):
+
+- Writer (g4396): in CGO `kg_create_edges_batch`, flushing 5000 edges
+  (`packages/go/kglite/dawgs/batch.go:188` →
+  `packages/go/kglite/kglite.go:280`). Reached from
+  `analysis.NewPostRelationshipOperation.func1` →
+  `dawgs ops/parallel.go:92`.
+- Readers (g4392/4393/4394): blocked at
+  `channels.Submit(... outC, AZMGAdd{Secret,Owner})` —
+  `packages/go/analysis/azure/post.go:260,508,547` — sending into the
+  unbuffered `readerWriterValueC` because the writer can't drain it.
+
+So no Go/Rust deadlock — pure backpressure caused by writer-side throughput.
+
+**Root cause** (fix shape between B and C, but on the FFI side, not the Go
+flush size or buffer): each
+`kg_create_edges_batch` call ran an O(degree(src)) edge-existence check
+*per edge* in `ConnectionBatchProcessor::flush_chunk`
+(`kglite-ffi/src/graph/batch_operations.rs::486-497`) via petgraph's
+`edges_connecting`. Azure post-processing emits N×M cross-product jobs
+from a small set of hub service-principal sources to thousands of
+targets, so the per-flush cost grew quadratically with the source's
+out-degree. Instrumenting the Go layer showed flushes climbing from
+5.3 s → 10.6 s as the graph filled, processing only ~7 batches before
+the test timeout fired. The same code path on the small AD fixture
+finished in ~500 ms because the source out-degrees stay small.
+
+**Fix** (single-file change, FFI layer only):
+`kglite-ffi/src/graph/batch_operations.rs::flush_chunk` now builds a
+`HashMap<(NodeIndex, NodeIndex), EdgeIndex>` once at the top of each
+chunk by iterating each unique source's outgoing edges *once*, then
+performs O(1) lookups for the per-edge existence check. The map is
+kept in sync as the loop adds new edges. `add_connection` no longer
+performs a redundant pre-flush existence check (kept only for
+`ConflictHandling::Skip` short-circuiting).
+
+A first attempt also added Go-side dedup of `(src,dst,kind)` in
+`Batch.CreateRelationshipByIDs` to fold N×M duplicate jobs into one
+EdgeSpec; while it eliminated the slow flushes too, it caused a 1800-edge
+delta vs the Neo4j golden because the dedup was suppressing real
+property-set updates that the analysis layer relies on emitting (e.g.
+LastSeen). Removed in favor of the FFI fix alone.
+
+**Verification**:
+
+| Test | Before | After |
+|------|--------|-------|
+| `TestLoadAndQueryKNexus` (analysis on) | hang ≥13m | PASS, AppRoleAssignments 295 ms |
+| `TestGoldenKNexus` | could not run (hang) | **53/53 MATCH** |
+| `TestGoldenKNexusOpenGraph` | could not run (hang) | **5/5 MATCH, 97 SKIP_NONDET** (unchanged from before) |
+| `TestLoadAndQueryAD`, `TestLoadAndQueryAzure` (regression check) | PASS | PASS |
+| `kglite-ffi` Rust unit tests | PASS | PASS |
+
+**Files changed**:
+
+- `kglite-ffi/src/graph/batch_operations.rs` — pre-built per-source
+  existing-edge index in `flush_chunk`; removed redundant existence
+  check in `add_connection` for non-Skip modes.
+- `packages/go/kglite/dawgs/batch.go` — no functional change beyond a
+  reverted dedup attempt; left as-is.
