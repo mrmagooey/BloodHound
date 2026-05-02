@@ -681,7 +681,13 @@ func ExecuteCommand(ctx context.Context, db graph.Database) (*analysis.AtomicPos
 				if tenantDevices, err := EndNodes(tx, tenant, azure.Contains, azure.Device); err != nil {
 					return err
 				} else if tenantDevices.Len() == 0 {
-					return nil
+					// Skip tenants with no devices; do NOT abort the whole pass.
+					// `return nil` here used to exit the closure, dropping all
+					// downstream tenants. With multiple tenants in the dataset
+					// (some empty, some populated) the result depended on the
+					// `FetchTenants` iteration order, which differs between
+					// Cypher engines and produced kglite/Neo4j divergence.
+					continue
 				} else if intuneAdmins, err := RoleMembers(tx, tenant, azure.IntuneServiceAdministratorRole); err != nil {
 					return err
 				} else {
