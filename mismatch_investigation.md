@@ -664,3 +664,85 @@ All 693 deferred merges resolved from `oidToIdx` with label `Base`. Mirrors Neo4
 - Remove the `deferredFlushStats` global counter (or hide behind a build tag).
 - Decide whether to keep the `.local-dawgs/` workspace replace or revert it (the dawgs probe instrumentation is no longer needed for the fix itself).
 - The `kglite-ffi` submodule is back at the upstream `b146f06` commit.
+
+---
+
+## Iteration Log (2026-05-02, after headline fix committed) — Residual gap localized
+
+The headline fix is committed (`130a7d6d`). Investigating the residual +13 nodes / +1391 relationships.
+
+### Per-edge-type comparison (kglite post-fix vs Neo4j)
+
+Diffs greater than ±2:
+
+| Edge type | kglite | Neo4j | Δ |
+|---|---|---|---|
+| `GH_MapsToUser` | 1381 | 692 | **+689** |
+| `SCIM_Provisioned` | 1394 | 1385 | +9 |
+| (small misc) | | | ~+693 ≈ +1391 ✓ |
+
+The +1391 is dominated by **+689 extra `GH_MapsToUser` edges in kglite**. That number is strikingly close to the 689 3-copy Okta_User count. Hypothesis: kglite creates a duplicate `GH_MapsToUser` edge per 3-copy Okta_User, perhaps because the `match_by:"name"` resolver path or some endpoint duplication causes the same logical edge to land twice with different endpoint OIDs that then resolve to the same node.
+
+### Per-2-copy-pattern post-fix comparison
+
+| Pattern | kglite post-fix | Neo4j | Δ |
+|---|---|---|---|
+| `{Base}` + `{SCIM, SCIM_User}` | 692 | 692 | 0 ✓ |
+| `{Base}` + `{GH_User, GitHub}` | 641 | 641 | 0 ✓ |
+| `{Base}` + `{AZBase, AZUser}` | 503 | 503 | 0 ✓ |
+| `{Base, GH_User}` + `{GitHub, GH_User}` | 51 | 51 | 0 ✓ |
+| `{Okta, Okta_Group}` + `{Okta_Group, SCIM}` | 9 | 0 | **+9** |
+| `{Base, Okta_User}` + `{Okta, Okta_User}` | 9 | 9 | 0 ✓ |
+| Misc small | ~7 | ~6 | ~+1 |
+
+The dominant residual node-divergence is **9 Okta_Group OIDs split into `(:Okta:Okta_Group) + (:Okta_Group:SCIM)`** — same pattern shape as the GH_ExternalIdentity bug (different files producing different label sets for the same objectid) but it survived the fix. Likely because the label timing differs: in the GH_ExternalIdentity case the `:Base` stub was created by edges (so `oidToIdx` got populated by `resolvePendingLookups`), but the `:Okta` and `:SCIM` paths for these 9 OIDs are both *node ingest* paths from different files with different sourceKinds, so they each get their own labelled MERGE and never end up as deferred (empty IdentityKind) merges.
+
+### Open items for next iteration
+
+1. **+689 `GH_MapsToUser` edges**: dump the actual edges (start OID, end OID) from kglite and Neo4j and find the duplication pattern. Likely a resolver or convertor issue, not a kglite-ffi bug.
+2. **+9 Okta_Group split nodes**: subagent investigation in progress (`aea2b85c15cb43318`). Goal is to identify whether this is the same deferred-merge mechanism with different label timing, or a new bug.
+3. Once both are characterized, decide whether one fix can cover both or if separate interventions are needed.
+
+---
+
+## Iteration Log (2026-05-02, late) — Both residual gaps closed by one fix
+
+### The discovery
+
+The residual +9 Okta_Group split nodes were localized via subagent investigation. Root cause: **kglite's endpoint resolver lacks read-isolation against in-batch writes**. The production code calls `endpoint.Resolver.PopulateSnapshot(ctx)` before `BatchOperation` (`cmd/api/src/services/graphify/tasks.go:234`), freezing the lower-name → objectid map so name-based edge resolution (`match_by:"name"`) only sees pre-batch state. The test ingest helpers (`doIngestZip`, `ingestZipFull`) don't do this.
+
+In Neo4j, the resolver's `MATCH (n {name:'X'})` query runs in a separate read session and naturally doesn't see uncommitted batch writes, so even without explicit snapshotting it gets pre-batch behavior. In kglite, the resolver shares the `KnowledgeGraph` instance with the batch — every batched MERGE is immediately visible to the resolver — so `match_by:"name"` resolves to in-batch nodes that should be invisible.
+
+This is **the same hypothesis** (#3 "Transaction isolation difference") flagged in the original investigation as "downgraded to secondary". It turned out to drive both the residual node split (+9) AND much of the relationship inflation (+1391 → 0 after fix). Hypothesis #3 is now firmly confirmed.
+
+### The fix
+
+In `cmd/api/src/test/e2e/ingest_test.go::doIngestZip`, call `resolver.PopulateSnapshot(ctx)` before `BatchOperation` and `resolver.ClearSnapshot()` after. This mirrors the production flow exactly.
+
+### Verification
+
+| Metric | Pre-fix | After deferred-merge fix | After snapshot fix | Neo4j |
+|---|---|---|---|---|
+| Total nodes | 11893 | 11200 | **11187** | 11187 ✓ |
+| Total relationships | 43960 | 43960 | **42569** | 42569 ✓ |
+| SCIM nodes | 1402 | 1402 | **1393** | 1393 ✓ |
+| Objectids on >1 node | 3293 | 2600 | **2588** | 2588 ✓ |
+| 3-copy objectids | 689 | 689 | **688** | 688 ✓ |
+| GH_MapsToUser edges | 1381 | 1381 | **692** | 692 ✓ |
+| Mismatches in 48-query suite | 14 | 14 | **1** | — |
+
+The single remaining mismatch was tie-break order in `All labels with counts` — both backends returned identical data but ordered tied counts (e.g., 255 for AZServicePrincipal and AZApp) differently. Fixed by adding `, lbl ASC` as secondary sort.
+
+### Hypothesis dispositions, final
+
+| Hypothesis | Final status |
+|---|---|
+| #1 kglite MERGE creates duplicates across flush boundaries | Ruled out |
+| #2 Stale golden file | Partially confirmed (irrelevant after fixes) |
+| #3 Transaction isolation difference (resolver) | **Confirmed root cause for ~15% of the original divergence (the +9 OktaGroup + +689 GH_MapsToUser edges)** |
+| #4 endpointIdentityKind returning "SCIM" instead of "Base" | Contributing factor; sourced the same ingest path that produces the deferred merges |
+| #5 kglite property-only MERGE fallback | Present at b146f06; gated by `node_matches_label`, doesn't cross-label-coalesce |
+| #6 Neo4j driver buffer coalesces by objectid | Ruled out (uses schema fingerprint, not objectid) |
+| #7 Neo4j MERGE has implicit cross-label index match | Ruled out (Neo4j splits the same way kglite does in isolation; what differs is the order of node vs edge MERGE flushes — see headline fix) |
+| #8 (new) dawgs Neo4j buffers nodes and edges separately, edges flush first | **Confirmed root cause for the headline 706-node gap (the GH_ExternalIdentity case)** |
+| #9 (new) Test ingest helpers skip resolver snapshot | **Confirmed root cause for the residual +9 / +689 divergence** |

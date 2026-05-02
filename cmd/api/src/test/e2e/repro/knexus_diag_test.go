@@ -333,6 +333,38 @@ func TestSecondaryLabelMergeRepro(t *testing.T) {
 	}
 }
 
+// TestKNexusEdgeTypeBreakdown ingests the k-nexus dataset and prints the count
+// for every distinct relationship type. Compare the output against Neo4j's
+// equivalent query to localize the +1391 relationship-count gap by type.
+//
+// Run with:
+//
+//	BH_SKIP_ANALYSIS=1 go test -v -tags e2e -timeout 5m -run TestKNexusEdgeTypeBreakdown ./cmd/api/src/test/e2e/repro/
+func TestKNexusEdgeTypeBreakdown(t *testing.T) {
+	ctx := context.Background()
+	zipPath := knexusDataPath()
+	if _, err := os.Stat(zipPath); os.IsNotExist(err) {
+		t.Skipf("k-nexus zip not found: %s", zipPath)
+	}
+
+	db := openGraph(t)
+	ingestZipFull(ctx, t, db, zipPath)
+	runKNexusAnalysis(ctx, t, db)
+
+	totalEdges := queryCount(ctx, t, db, "MATCH ()-[r]->() RETURN count(r)")
+	t.Logf("Total relationships: %d", totalEdges)
+
+	rows := queryString(ctx, t, db,
+		"MATCH ()-[r]->() RETURN type(r) AS rel_type, count(r) AS c ORDER BY c DESC")
+	t.Log("Per-edge-type counts (kglite):")
+	for _, line := range strings.Split(rows, "\n") {
+		if line == "" {
+			continue
+		}
+		t.Logf("  %s", line)
+	}
+}
+
 // TestKNexusEqualityProbe checks whether kglite's `MATCH (n) WHERE n.objectid = X`
 // returns ALL nodes sharing that objectid, or only the first label's match. The
 // 2-copy pattern aggregation gave suspicious output suggesting only one node is

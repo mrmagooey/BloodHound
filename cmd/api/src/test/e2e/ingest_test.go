@@ -120,6 +120,21 @@ func doIngestZip(ctx context.Context, db graph.Database, zipPath string, ingestS
 		graphify.WithEndpointResolver(resolver),
 	)
 
+	// Mirror production GraphifyService.ProcessIngestFile by snapshotting the
+	// graph's named-node state BEFORE the batch begins. Without this, kglite's
+	// resolver sees in-batch (deferred or uncommitted) nodes during name
+	// resolution while Neo4j's resolver — using a separate read session — sees
+	// only committed data. The divergence shows up as match_by:"name" edges
+	// resolving in kglite when they should have been dropped, creating extra
+	// stub nodes (e.g. the 9 [SCIM, Okta_Group] residuals after the headline
+	// deferred-merge fix).
+	if err := resolver.PopulateSnapshot(ctx); err != nil {
+		// Non-fatal: snapshot failure falls back to live-query behaviour.
+		// Tests that populate data inside the same batch as their name lookups
+		// will still produce divergent results in that case.
+		_ = err
+	}
+
 	readOpts := graphify.ReadOptions{
 		FileType:     model.FileTypeZip,
 		IngestSchema: ingestSchema,
@@ -132,6 +147,7 @@ func doIngestZip(ctx context.Context, db graph.Database, zipPath string, ingestS
 		ic.BindBatchUpdater(batch)
 		return processZip(ctx, ic, zipPath, readOpts)
 	})
+	resolver.ClearSnapshot()
 
 	return time.Since(start), err
 }

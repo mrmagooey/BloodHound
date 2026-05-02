@@ -301,10 +301,12 @@ var knexusPresetQueries = []presetQuery{
 		Cypher: `MATCH (n:SCIM) WHERE NOT n:Okta AND NOT n:Base AND NOT n:SCIM_User RETURN count(n) AS scim_stubs`,
 	},
 
-	// Labels breakdown for all nodes by label combination
+	// Labels breakdown for all nodes by label combination.
+	// Secondary sort by lbl ASC breaks ties so the comparison is deterministic;
+	// without it, kglite and Neo4j may order equal counts differently.
 	{
 		Name:   "All labels with counts",
-		Cypher: `MATCH (n) UNWIND labels(n) AS lbl RETURN lbl, count(*) AS c ORDER BY c DESC`,
+		Cypher: `MATCH (n) UNWIND labels(n) AS lbl RETURN lbl, count(*) AS c ORDER BY c DESC, lbl ASC`,
 	},
 }
 
