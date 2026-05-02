@@ -814,3 +814,29 @@ LastSeen). Removed in favor of the FFI fix alone.
   check in `add_connection` for non-Skip modes.
 - `packages/go/kglite/dawgs/batch.go` — no functional change beyond a
   reverted dedup attempt; left as-is.
+
+---
+
+## Final state (2026-05-02)
+
+After all four commits land (`130a7d6d` deferred-merge, `f6c1f466` resolver snapshot, `a865323f` test speedup, `90b92b6b` Rust quadratic-edge fix), end-to-end verification with analysis enabled on both backends:
+
+| Surface | Result |
+|---|---|
+| `TestCompareKNexus` preset queries (analysis off) | **48/48 match** |
+| `TestCompareKNexus` attack-path edges (analysis off) | **20/20 match** |
+| `TestCompareKNexus` attack-path edges (analysis on, live Neo4j) | **20/20 match** |
+| `TestCompareKNexusOpenGraph` | **94 match / 0 mismatch** (8 nondeterministic, 51 unsupported-Cypher) |
+| `TestGoldenKNexus` (kglite vs frozen Neo4j golden) | **53/53 match** |
+| `TestGoldenKNexusOpenGraph` | **5/5 match** |
+| `TestLoadAndQueryKNexus` (analysis on) | **PASS**, AppRoleAssignments 295ms (was hanging) |
+
+The full TestCompareKNexus with analysis on a live Neo4j shows 4 residual mismatches:
+1. Total relationships: 63546 (kglite) vs 61746 (this Neo4j run) — **kglite matches the golden 63546**, current Neo4j is 1800 short
+2. Distinct relationship types: kglite has `AZExecuteCommand` (and a few related Azure types), this Neo4j run does not
+3. SCIM_Provisioned start node labels: kglite has `GitHub=1` extra
+4. All-labels-with-counts cosmetic ordering
+
+These are not kglite-vs-Neo4j divergences — kglite agrees with the canonical golden Neo4j state. They reflect Neo4j-side run-to-run variance: parallel AD/Azure post-processing in Neo4j hits transient deadlocks/retries that occasionally drop edges silently, dropping derived edge types like `AZExecuteCommand` (an AZMG* downstream edge) that depend on intermediate edges. The user's prior `bench_all` run also had `Transaction.DeadlockDetected` errors during AD post-processing that confirm this concurrency issue is on the Neo4j side, not kglite.
+
+The original "kgnexus dataset queries don't match Neo4j" issue is **fully resolved**. The user-visible attack-path queries (the 20-edge security-relevant set) match exactly, and the comprehensive golden-file comparison passes 53/53.
