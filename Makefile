@@ -1,4 +1,4 @@
-.PHONY: init kglite ui build build-windows test test-quick test-rust test-comparison test-adminer test-knexus golden-generate golden-test golden-test-all docker clean
+.PHONY: init kglite ui build build-windows test test-full test-quick test-rust test-comparison test-adminer test-knexus golden-generate golden-test golden-test-all docker clean
 
 ## Initialize kglite submodule (run once after clone)
 init:
@@ -26,8 +26,12 @@ build-windows: ui
 		CGO_LDFLAGS="kglite-ffi/target/x86_64-pc-windows-gnu/release/libkglite.a -lm -lws2_32 -luserenv -lntdll -lbcrypt" \
 		go build -tags standalone -o bloodhound-standalone.exe ./cmd/api/src/cmd/bhapi
 
-## Run all non-comparison e2e tests
+## Run all non-comparison e2e tests (KNexus fixture skipped — adds ~115s)
 test: kglite
+	BH_SKIP_KNEXUS=1 go test -v -tags e2e -timeout 30m ./cmd/api/src/test/e2e/
+
+## Run all e2e tests including the KNexus fixture
+test-full: kglite
 	go test -v -tags e2e -timeout 30m ./cmd/api/src/test/e2e/
 
 ## Run only the Azure attack path analysis test (quick smoke test)
