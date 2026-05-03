@@ -246,6 +246,28 @@ func TestParseDomainTrusts_TrustAttributes(t *testing.T) {
 		assert.Contains(t, rel.RelProps, ad.TrustAttributesInbound.String())
 		assert.Equal(t, nil, rel.RelProps[ad.TrustAttributesInbound.String()])
 	})
+
+	t.Run("TrustAttributes Parse Nil Silent", func(t *testing.T) {
+		domainObject.Trusts = []ein.Trust{
+			{
+				TargetDomainSid:      "abc123",
+				IsTransitive:         false,
+				TrustDirection:       ein.TrustDirectionInbound,
+				TrustType:            "abc",
+				SidFilteringEnabled:  true,
+				TargetDomainName:     "abc456",
+				TGTDelegationEnabled: false,
+				TrustAttributes:      nil,
+			},
+		}
+
+		result := ein.ParseDomainTrusts(domainObject)
+		require.Len(t, result.TrustRelationships, 1)
+
+		rel := result.TrustRelationships[0]
+		assert.Contains(t, rel.RelProps, ad.TrustAttributesInbound.String())
+		assert.Equal(t, nil, rel.RelProps[ad.TrustAttributesInbound.String()])
+	})
 }
 
 func TestConvertComputerToNode(t *testing.T) {

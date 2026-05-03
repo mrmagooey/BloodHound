@@ -873,6 +873,10 @@ func ParseDomainTrusts(domain Domain) ParsedDomainTrustData {
 			convertedTrustAttributes = int(converted)
 		case float64:
 			convertedTrustAttributes = int(converted)
+		case nil:
+			// JSON null / missing field: collectors routinely omit TrustAttributes
+			// for trusts where the value is unavailable. Treat as invalid silently.
+			invalidTrustAttribute = true
 		default:
 			slog.Warn(fmt.Sprintf("Unexpected trust attributes type of %T, failed to convert to an int", converted))
 			invalidTrustAttribute = true
