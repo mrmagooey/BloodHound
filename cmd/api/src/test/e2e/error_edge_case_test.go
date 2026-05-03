@@ -35,6 +35,7 @@ var edgeCaseKind = graph.StringKind("EdgeCaseNode")
 // TestErrorCypherSyntaxError verifies that invalid Cypher returns a non-nil error
 // with a meaningful message.
 func TestErrorCypherSyntaxError(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := openGraph(t)
 
@@ -49,6 +50,7 @@ func TestErrorCypherSyntaxError(t *testing.T) {
 
 // TestErrorEmptyKinds verifies that creating a node with no kinds returns an error.
 func TestErrorEmptyKinds(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := openGraph(t)
 
@@ -66,6 +68,7 @@ func TestErrorEmptyKinds(t *testing.T) {
 // operation inside a read transaction. The driver may or may not enforce this;
 // this test documents the current behavior.
 func TestErrorWriteInReadTransaction(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := openGraph(t)
 
@@ -89,6 +92,7 @@ func TestErrorWriteInReadTransaction(t *testing.T) {
 // TestEdgeCaseQueryOnEmptyGraph verifies that querying an empty graph returns
 // zero results rather than an error.
 func TestEdgeCaseQueryOnEmptyGraph(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := openGraph(t)
 
@@ -98,6 +102,7 @@ func TestEdgeCaseQueryOnEmptyGraph(t *testing.T) {
 
 // TestEdgeCaseNilProperties verifies behavior when creating a node with nil properties.
 func TestEdgeCaseNilProperties(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := openGraph(t)
 
@@ -120,6 +125,7 @@ func TestEdgeCaseNilProperties(t *testing.T) {
 // TestEdgeCaseDeleteNonExistentNode verifies that deleting a node that does not
 // exist is a no-op and does not produce an error.
 func TestEdgeCaseDeleteNonExistentNode(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := openGraph(t)
 
@@ -133,6 +139,7 @@ func TestEdgeCaseDeleteNonExistentNode(t *testing.T) {
 
 // TestEdgeCaseDoubleClose verifies that closing the driver twice does not panic.
 func TestEdgeCaseDoubleClose(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	graphPath := filepath.Join(dir, "double_close.kgl")
 	db, err := kglitedawgs.Open(graphPath)
@@ -155,6 +162,7 @@ func TestEdgeCaseDoubleClose(t *testing.T) {
 // TestEdgeCaseOpenNonExistentDirectory verifies behavior when opening a graph
 // at a path where the parent directory does not exist.
 func TestEdgeCaseOpenNonExistentDirectory(t *testing.T) {
+	t.Parallel()
 	db, err := kglitedawgs.Open("/nonexistent/path/graph.db")
 
 	// kglite.Open falls back to kglite.New() when Load fails, so this should

@@ -135,6 +135,7 @@ func compareKgliteToGolden(ctx context.Context, t *testing.T, db graph.Database,
 
 // TestGoldenAD compares the shared AD kglite graph against golden Neo4j results.
 func TestGoldenAD(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := sharedADGraph(t)
 	golden := loadGoldenFile(t, "ad_golden.json")
@@ -144,6 +145,7 @@ func TestGoldenAD(t *testing.T) {
 
 // TestGoldenAzure compares the shared Azure kglite graph against golden Neo4j results.
 func TestGoldenAzure(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := sharedAzureGraph(t)
 	golden := loadGoldenFile(t, "azure_golden.json")
@@ -153,6 +155,7 @@ func TestGoldenAzure(t *testing.T) {
 
 // TestGoldenKNexus compares the shared k-nexus kglite graph against golden Neo4j results.
 func TestGoldenKNexus(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := sharedKNexusGraph(t)
 	golden := loadGoldenFile(t, "knexus_golden.json")
@@ -162,6 +165,7 @@ func TestGoldenKNexus(t *testing.T) {
 
 // TestGoldenKNexusOpenGraph compares bundled OpenGraph query results against golden Neo4j results.
 func TestGoldenKNexusOpenGraph(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := sharedKNexusGraph(t)
 	golden := loadGoldenFile(t, "knexus_opengraph_golden.json")

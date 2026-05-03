@@ -18,6 +18,7 @@ var concurrentNodeKind = graph.StringKind("ConcurrentTestNode")
 // TestConcurrentReads seeds a graph with 100 nodes and launches 10 goroutines
 // that each run a ReadTransaction with a count query. All must return 100.
 func TestConcurrentReads(t *testing.T) {
+	t.Parallel()
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
@@ -74,6 +75,7 @@ func TestConcurrentReads(t *testing.T) {
 // transaction (adding nodes) and multiple read transactions. Neither should
 // panic or deadlock.
 func TestConcurrentReadDuringWrite(t *testing.T) {
+	t.Parallel()
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
@@ -162,6 +164,7 @@ func TestConcurrentReadDuringWrite(t *testing.T) {
 // unique properties via WriteTransaction. After all complete, the total node
 // count must equal the expected sum.
 func TestConcurrentMultipleWrites(t *testing.T) {
+	t.Parallel()
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
@@ -207,6 +210,7 @@ func TestConcurrentMultipleWrites(t *testing.T) {
 // TestConcurrentBatchWithReads starts a batch write operation while concurrently
 // reading from the graph. Verifies no panics or data corruption.
 func TestConcurrentBatchWithReads(t *testing.T) {
+	t.Parallel()
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
@@ -292,6 +296,7 @@ func TestConcurrentBatchWithReads(t *testing.T) {
 // write transactions complete within a reasonable timeout, detecting potential
 // deadlocks. Uses a 5-second operation timeout inside a 30-second test timeout.
 func TestConcurrentReadWriteDeadlockDetection(t *testing.T) {
+	t.Parallel()
 	opCtx, opCancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer opCancel()
 

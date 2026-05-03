@@ -18,6 +18,7 @@ var txTestEdgeKind = graph.StringKind("TxTestEdge")
 // TestTransactionCoverageQuery verifies that Query() is an alias for Raw()
 // by running the same Cypher through both and comparing results.
 func TestTransactionCoverageQuery(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := openGraph(t)
 
@@ -79,6 +80,7 @@ func TestTransactionCoverageQuery(t *testing.T) {
 
 // TestTransactionCoverageWithGraph verifies WithGraph returns the same transaction.
 func TestTransactionCoverageWithGraph(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := openGraph(t)
 
@@ -101,6 +103,7 @@ func TestTransactionCoverageWithGraph(t *testing.T) {
 
 // TestTransactionCoverageCreateNode tests CreateNode with properties and multiple kinds.
 func TestTransactionCoverageCreateNode(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := openGraph(t)
 
@@ -158,6 +161,7 @@ func TestTransactionCoverageCreateNode(t *testing.T) {
 
 // TestTransactionCoverageUpdateNode tests updating a node's properties.
 func TestTransactionCoverageUpdateNode(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := openGraph(t)
 
@@ -267,6 +271,7 @@ func TestTransactionCoverageUpdateNode(t *testing.T) {
 
 // TestTransactionCoverageCreateRelationshipByIDs tests creating a relationship between two nodes.
 func TestTransactionCoverageCreateRelationshipByIDs(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := openGraph(t)
 
@@ -311,6 +316,7 @@ func TestTransactionCoverageCreateRelationshipByIDs(t *testing.T) {
 
 // TestTransactionCoverageUpdateRelationship tests updating a relationship's properties.
 func TestTransactionCoverageUpdateRelationship(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := openGraph(t)
 
@@ -383,6 +389,7 @@ func TestTransactionCoverageUpdateRelationship(t *testing.T) {
 
 // TestTransactionCoverageNodes verifies that Nodes() returns a working NodeQuery.
 func TestTransactionCoverageNodes(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := openGraph(t)
 	createNodes(ctx, t, db, txTestNodeKind, 4)
@@ -403,6 +410,7 @@ func TestTransactionCoverageNodes(t *testing.T) {
 
 // TestTransactionCoverageRelationships verifies that Relationships() returns a working RelationshipQuery.
 func TestTransactionCoverageRelationships(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := openGraph(t)
 	createChain(ctx, t, db, txTestNodeKind, txTestEdgeKind, 3) // 2 edges
@@ -423,6 +431,7 @@ func TestTransactionCoverageRelationships(t *testing.T) {
 
 // TestTransactionCoverageGraphQueryMemoryLimit verifies GraphQueryMemoryLimit returns a non-negative value.
 func TestTransactionCoverageGraphQueryMemoryLimit(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := openGraph(t)
 
@@ -437,6 +446,7 @@ func TestTransactionCoverageGraphQueryMemoryLimit(t *testing.T) {
 // TestTransactionCoverageRewriteMultiTypeRel exercises the rewrite path for
 // pipe-separated relationship types in Cypher (e.g., [:TypeA|TypeB]).
 func TestTransactionCoverageRewriteMultiTypeRel(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := openGraph(t)
 
@@ -475,6 +485,7 @@ func TestTransactionCoverageRewriteMultiTypeRel(t *testing.T) {
 // TestTransactionCoverageRewriteLabelWhere exercises the rewrite path for
 // var:Kind label checks in WHERE clauses.
 func TestTransactionCoverageRewriteLabelWhere(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := openGraph(t)
 
@@ -500,6 +511,7 @@ func TestTransactionCoverageRewriteLabelWhere(t *testing.T) {
 // TestTransactionCoverageRewriteInParam exercises the rewrite path for
 // IN $param patterns that need to be expanded to literal lists.
 func TestTransactionCoverageRewriteInParam(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := openGraph(t)
 
@@ -563,6 +575,7 @@ func TestTransactionCoverageRewriteInParam(t *testing.T) {
 
 // TestTransactionCoverageCommit verifies that Commit is a no-op (returns nil).
 func TestTransactionCoverageCommit(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := openGraph(t)
 

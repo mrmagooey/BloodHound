@@ -54,83 +54,99 @@ func setupCypherTestGraph(ctx context.Context, t *testing.T, db graph.Database) 
 }
 
 func TestCypherMATCH(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := openGraph(t)
 	setupCypherTestGraph(ctx, t, db)
 
 	t.Run("all nodes", func(t *testing.T) {
+		t.Parallel()
 		count := runQueryInt64(ctx, t, db, "MATCH (n:CypherTest) RETURN count(n) AS c")
 		require.Equal(t, int64(3), count)
 	})
 
 	t.Run("all relationships", func(t *testing.T) {
+		t.Parallel()
 		count := runQueryInt64(ctx, t, db, "MATCH ()-[r:CypherEdge]->() RETURN count(r) AS c")
 		require.Equal(t, int64(2), count)
 	})
 
 	t.Run("pattern match", func(t *testing.T) {
+		t.Parallel()
 		count := runQueryInt64(ctx, t, db, "MATCH (a:CypherTest)-[:CypherEdge]->(b:CypherTest) RETURN count(*) AS c")
 		require.Equal(t, int64(2), count)
 	})
 }
 
 func TestCypherWHERE(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := openGraph(t)
 	setupCypherTestGraph(ctx, t, db)
 
 	t.Run("equals", func(t *testing.T) {
+		t.Parallel()
 		count := runQueryInt64(ctx, t, db, "MATCH (n:CypherTest) WHERE n.name = 'Alice' RETURN count(n) AS c")
 		require.Equal(t, int64(1), count)
 	})
 
 	t.Run("not equals", func(t *testing.T) {
+		t.Parallel()
 		count := runQueryInt64(ctx, t, db, "MATCH (n:CypherTest) WHERE n.name <> 'Alice' RETURN count(n) AS c")
 		require.Equal(t, int64(2), count)
 	})
 
 	t.Run("greater than", func(t *testing.T) {
+		t.Parallel()
 		count := runQueryInt64(ctx, t, db, "MATCH (n:CypherTest) WHERE n.score > 100 RETURN count(n) AS c")
 		require.Equal(t, int64(2), count)
 	})
 
 	t.Run("boolean", func(t *testing.T) {
+		t.Parallel()
 		count := runQueryInt64(ctx, t, db, "MATCH (n:CypherTest) WHERE n.enabled = true RETURN count(n) AS c")
 		require.Equal(t, int64(2), count)
 	})
 
 	t.Run("AND", func(t *testing.T) {
+		t.Parallel()
 		count := runQueryInt64(ctx, t, db, "MATCH (n:CypherTest) WHERE n.enabled = true AND n.score > 100 RETURN count(n) AS c")
 		require.Equal(t, int64(1), count)
 	})
 
 	t.Run("OR", func(t *testing.T) {
+		t.Parallel()
 		count := runQueryInt64(ctx, t, db, "MATCH (n:CypherTest) WHERE n.name = 'Alice' OR n.name = 'Bob' RETURN count(n) AS c")
 		require.Equal(t, int64(2), count)
 	})
 
 	t.Run("STARTS WITH", func(t *testing.T) {
+		t.Parallel()
 		count := runQueryInt64(ctx, t, db, "MATCH (n:CypherTest) WHERE n.name STARTS WITH 'Al' RETURN count(n) AS c")
 		require.Equal(t, int64(1), count)
 	})
 
 	t.Run("ENDS WITH", func(t *testing.T) {
+		t.Parallel()
 		count := runQueryInt64(ctx, t, db, "MATCH (n:CypherTest) WHERE n.objectid ENDS WITH '-3' RETURN count(n) AS c")
 		require.Equal(t, int64(1), count)
 	})
 
 	t.Run("CONTAINS", func(t *testing.T) {
+		t.Parallel()
 		count := runQueryInt64(ctx, t, db, "MATCH (n:CypherTest) WHERE n.name CONTAINS 'ob' RETURN count(n) AS c")
 		require.Equal(t, int64(1), count)
 	})
 
 	t.Run("IN list", func(t *testing.T) {
+		t.Parallel()
 		count := runQueryInt64(ctx, t, db, "MATCH (n:CypherTest) WHERE n.name IN ['Alice', 'Charlie'] RETURN count(n) AS c")
 		require.Equal(t, int64(2), count)
 	})
 }
 
 func TestCypherWITH(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := openGraph(t)
 	setupCypherTestGraph(ctx, t, db)
@@ -141,6 +157,7 @@ func TestCypherWITH(t *testing.T) {
 }
 
 func TestCypherORDER_BY(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := openGraph(t)
 	setupCypherTestGraph(ctx, t, db)
@@ -165,6 +182,7 @@ func TestCypherORDER_BY(t *testing.T) {
 }
 
 func TestCypherDISTINCT(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := openGraph(t)
 	setupCypherTestGraph(ctx, t, db)
@@ -176,22 +194,26 @@ func TestCypherDISTINCT(t *testing.T) {
 }
 
 func TestCypherFunctions(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := openGraph(t)
 	a, _, _ := setupCypherTestGraph(ctx, t, db)
 
 	t.Run("count", func(t *testing.T) {
+		t.Parallel()
 		count := runQueryInt64(ctx, t, db, "MATCH (n:CypherTest) RETURN count(n) AS c")
 		require.Equal(t, int64(3), count)
 	})
 
 	t.Run("id", func(t *testing.T) {
+		t.Parallel()
 		got := runQueryInt64(ctx, t, db,
 			fmt.Sprintf("MATCH (n) WHERE id(n) = %d RETURN id(n) AS i", a))
 		require.Equal(t, int64(a), got)
 	})
 
 	t.Run("type", func(t *testing.T) {
+		t.Parallel()
 		var relType string
 		err := db.ReadTransaction(ctx, func(tx graph.Transaction) error {
 			result := tx.Raw("MATCH ()-[r:CypherEdge]->() RETURN type(r) AS t LIMIT 1", nil)
@@ -206,6 +228,7 @@ func TestCypherFunctions(t *testing.T) {
 	})
 
 	t.Run("coalesce", func(t *testing.T) {
+		t.Parallel()
 		var name string
 		err := db.ReadTransaction(ctx, func(tx graph.Transaction) error {
 			result := tx.Raw(
@@ -221,6 +244,7 @@ func TestCypherFunctions(t *testing.T) {
 	})
 
 	t.Run("toLower", func(t *testing.T) {
+		t.Parallel()
 		var lower string
 		err := db.ReadTransaction(ctx, func(tx graph.Transaction) error {
 			result := tx.Raw(
@@ -236,6 +260,7 @@ func TestCypherFunctions(t *testing.T) {
 	})
 
 	t.Run("toUpper", func(t *testing.T) {
+		t.Parallel()
 		var upper string
 		err := db.ReadTransaction(ctx, func(tx graph.Transaction) error {
 			result := tx.Raw(
@@ -251,6 +276,7 @@ func TestCypherFunctions(t *testing.T) {
 	})
 
 	t.Run("labels", func(t *testing.T) {
+		t.Parallel()
 		var label string
 		err := db.ReadTransaction(ctx, func(tx graph.Transaction) error {
 			result := tx.Raw(
@@ -268,23 +294,27 @@ func TestCypherFunctions(t *testing.T) {
 }
 
 func TestCypherVariableLengthPaths(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := openGraph(t)
 	setupCypherTestGraph(ctx, t, db) // A->B->C
 
 	t.Run("unbounded", func(t *testing.T) {
+		t.Parallel()
 		count := runQueryInt64(ctx, t, db,
 			"MATCH (a:CypherTest)-[:CypherEdge*1..]->(x) WHERE a.name = 'Alice' RETURN count(x) AS c")
 		require.Equal(t, int64(2), count) // B and C
 	})
 
 	t.Run("exact length", func(t *testing.T) {
+		t.Parallel()
 		count := runQueryInt64(ctx, t, db,
 			"MATCH (a:CypherTest)-[:CypherEdge*2]->(x) WHERE a.name = 'Alice' RETURN count(x) AS c")
 		require.Equal(t, int64(1), count) // only C at distance 2
 	})
 
 	t.Run("bounded", func(t *testing.T) {
+		t.Parallel()
 		count := runQueryInt64(ctx, t, db,
 			"MATCH (a:CypherTest)-[:CypherEdge*1..1]->(x) WHERE a.name = 'Alice' RETURN count(x) AS c")
 		require.Equal(t, int64(1), count) // only B at distance 1
@@ -292,6 +322,7 @@ func TestCypherVariableLengthPaths(t *testing.T) {
 }
 
 func TestCypherPipeSeparatedTypes(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := openGraph(t)
 
@@ -313,6 +344,7 @@ func TestCypherPipeSeparatedTypes(t *testing.T) {
 }
 
 func TestCypherLabelCheckInWhere(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := openGraph(t)
 	setupCypherTestGraph(ctx, t, db)
@@ -323,6 +355,7 @@ func TestCypherLabelCheckInWhere(t *testing.T) {
 }
 
 func TestCypherINList(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := openGraph(t)
 	setupCypherTestGraph(ctx, t, db)
@@ -334,6 +367,7 @@ func TestCypherINList(t *testing.T) {
 }
 
 func TestCypherCASE(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := openGraph(t)
 	setupCypherTestGraph(ctx, t, db)

@@ -60,6 +60,7 @@ func seedQCChain(ctx context.Context, t *testing.T, db graph.Database, n int) []
 // ─── Node Query Tests ────────────────────────────────────────────────────────
 
 func TestQueryNodeFilterFetch(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := openGraph(t)
 	seedQCNodes(ctx, t, db, 3)
@@ -78,6 +79,7 @@ func TestQueryNodeFilterFetch(t *testing.T) {
 }
 
 func TestQueryNodeFilterfFetch(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := openGraph(t)
 	seedQCNodes(ctx, t, db, 2)
@@ -98,6 +100,7 @@ func TestQueryNodeFilterfFetch(t *testing.T) {
 }
 
 func TestQueryNodeFirst(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := openGraph(t)
 	seedQCNodes(ctx, t, db, 3)
@@ -112,6 +115,7 @@ func TestQueryNodeFirst(t *testing.T) {
 }
 
 func TestQueryNodeFirstNotFound(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := openGraph(t)
 
@@ -124,6 +128,7 @@ func TestQueryNodeFirstNotFound(t *testing.T) {
 }
 
 func TestQueryNodeFetchIDs(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := openGraph(t)
 	seedQCNodes(ctx, t, db, 4)
@@ -142,6 +147,7 @@ func TestQueryNodeFetchIDs(t *testing.T) {
 }
 
 func TestQueryNodeFetchKinds(t *testing.T) {
+	t.Parallel()
 	t.Skip("kglite: FetchKinds not yet implemented via query builder")
 	ctx := context.Background()
 	db := openGraph(t)
@@ -164,6 +170,7 @@ func TestQueryNodeFetchKinds(t *testing.T) {
 }
 
 func TestQueryNodeOrderByOffsetLimit(t *testing.T) {
+	t.Parallel()
 	t.Skip("kglite: OrderBy+Offset+Limit not yet supported via query builder")
 	ctx := context.Background()
 	db := openGraph(t)
@@ -188,6 +195,7 @@ func TestQueryNodeOrderByOffsetLimit(t *testing.T) {
 }
 
 func TestQueryNodeDelete(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := openGraph(t)
 	seedQCNodes(ctx, t, db, 3)
@@ -202,6 +210,7 @@ func TestQueryNodeDelete(t *testing.T) {
 }
 
 func TestQueryNodeUpdate(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := openGraph(t)
 	seedQCNodes(ctx, t, db, 2)
@@ -229,6 +238,7 @@ func TestQueryNodeUpdate(t *testing.T) {
 // ─── Relationship Query Tests ────────────────────────────────────────────────
 
 func TestQueryRelFilterFetch(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := openGraph(t)
 	seedQCChain(ctx, t, db, 4) // 3 edges
@@ -247,6 +257,7 @@ func TestQueryRelFilterFetch(t *testing.T) {
 }
 
 func TestQueryRelFetchTriples(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := openGraph(t)
 	seedQCChain(ctx, t, db, 3) // 2 edges
@@ -265,6 +276,7 @@ func TestQueryRelFetchTriples(t *testing.T) {
 }
 
 func TestQueryRelFetchKinds(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := openGraph(t)
 	seedQCChain(ctx, t, db, 3) // 2 edges
@@ -286,6 +298,7 @@ func TestQueryRelFetchKinds(t *testing.T) {
 }
 
 func TestQueryRelDelete(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := openGraph(t)
 	seedQCChain(ctx, t, db, 3) // 2 edges
@@ -300,6 +313,7 @@ func TestQueryRelDelete(t *testing.T) {
 }
 
 func TestQueryRelUpdate(t *testing.T) {
+	t.Parallel()
 	t.Skip("kglite: relationship Update via query builder not yet supported")
 	ctx := context.Background()
 	db := openGraph(t)
@@ -326,6 +340,7 @@ func TestQueryRelUpdate(t *testing.T) {
 }
 
 func TestQueryRelFilterfFetch(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := openGraph(t)
 	seedQCChain(ctx, t, db, 3) // 2 edges
@@ -346,6 +361,7 @@ func TestQueryRelFilterfFetch(t *testing.T) {
 }
 
 func TestQueryRelOrderByOffsetLimit(t *testing.T) {
+	t.Parallel()
 	t.Skip("kglite: OrderBy+Offset+Limit not yet supported for relationships via query builder")
 	ctx := context.Background()
 	db := openGraph(t)
@@ -370,6 +386,7 @@ func TestQueryRelOrderByOffsetLimit(t *testing.T) {
 }
 
 func TestQueryRelFetchIDs(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := openGraph(t)
 	seedQCChain(ctx, t, db, 3) // 2 edges
@@ -390,6 +407,7 @@ func TestQueryRelFetchIDs(t *testing.T) {
 // ─── Result Tests ────────────────────────────────────────────────────────────
 
 func TestResultScanKeysValues(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := openGraph(t)
 	seedQCNodes(ctx, t, db, 1)
@@ -423,6 +441,7 @@ func TestResultScanKeysValues(t *testing.T) {
 }
 
 func TestResultScanNode(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := openGraph(t)
 	seedQCNodes(ctx, t, db, 1)
@@ -442,6 +461,7 @@ func TestResultScanNode(t *testing.T) {
 }
 
 func TestResultScanRelationship(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := openGraph(t)
 	seedQCChain(ctx, t, db, 2) // 1 edge
@@ -461,6 +481,7 @@ func TestResultScanRelationship(t *testing.T) {
 }
 
 func TestResultErrorFromBadQuery(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := openGraph(t)
 
@@ -480,6 +501,7 @@ func TestResultErrorFromBadQuery(t *testing.T) {
 }
 
 func TestResultMapper(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := openGraph(t)
 	seedQCNodes(ctx, t, db, 1)
@@ -498,6 +520,7 @@ func TestResultMapper(t *testing.T) {
 }
 
 func TestResultValuesCache(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := openGraph(t)
 	seedQCNodes(ctx, t, db, 1)
@@ -517,6 +540,7 @@ func TestResultValuesCache(t *testing.T) {
 }
 
 func TestResultMultipleRows(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := openGraph(t)
 	seedQCNodes(ctx, t, db, 3)
@@ -541,6 +565,7 @@ func TestResultMultipleRows(t *testing.T) {
 }
 
 func TestQueryNodePropertyFilter(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := openGraph(t)
 	seedQCNodes(ctx, t, db, 3)

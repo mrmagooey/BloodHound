@@ -18,12 +18,14 @@ var driverAltKind = graph.StringKind("DriverAltKind")
 // --- Database Interface ---
 
 func TestDriverOpenClose(t *testing.T) {
+	t.Parallel()
 	db := openGraph(t)
 	require.NotNil(t, db)
 	// Cleanup registered via t.Cleanup in openGraph
 }
 
 func TestDriverReadWriteTransaction(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := openGraph(t)
 
@@ -51,6 +53,7 @@ func TestDriverReadWriteTransaction(t *testing.T) {
 }
 
 func TestDriverBatchOperation(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := openGraph(t)
 
@@ -74,6 +77,7 @@ func TestDriverBatchOperation(t *testing.T) {
 // --- Transaction Interface ---
 
 func TestTxCreateNode(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := openGraph(t)
 
@@ -98,6 +102,7 @@ func TestTxCreateNode(t *testing.T) {
 }
 
 func TestTxCreateRelationship(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := openGraph(t)
 
@@ -119,6 +124,7 @@ func TestTxCreateRelationship(t *testing.T) {
 }
 
 func TestTxRawCypher(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := openGraph(t)
 	createNodes(ctx, t, db, driverNodeKind, 5)
@@ -145,6 +151,7 @@ func TestTxRawCypher(t *testing.T) {
 }
 
 func TestTxNodesQuery(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := openGraph(t)
 	createNodes(ctx, t, db, driverNodeKind, 3)
@@ -161,6 +168,7 @@ func TestTxNodesQuery(t *testing.T) {
 }
 
 func TestTxRelationshipsQuery(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := openGraph(t)
 
@@ -181,6 +189,7 @@ func TestTxRelationshipsQuery(t *testing.T) {
 // --- Batch Interface ---
 
 func TestBatchUpdateNodeBy(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := openGraph(t)
 

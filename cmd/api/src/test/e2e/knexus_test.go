@@ -31,6 +31,7 @@ import (
 // TestLoadAndQueryKNexus uses the shared pre-loaded k-nexus-global graph and
 // runs preset queries covering AD, Azure, and cross-platform node types.
 func TestLoadAndQueryKNexus(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := sharedKNexusGraph(t)
 

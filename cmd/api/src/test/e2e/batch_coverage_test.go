@@ -33,6 +33,7 @@ var batchEdgeKind = graph.StringKind("BatchTestEdge")
 
 // TestBatchCommit verifies that calling Commit() flushes buffered nodes to the graph.
 func TestBatchCommit(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := openGraph(t)
 
@@ -69,6 +70,7 @@ func TestBatchCommit(t *testing.T) {
 
 // TestBatchCreateNode verifies creating nodes with various kinds and properties.
 func TestBatchCreateNode(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := openGraph(t)
 
@@ -100,6 +102,7 @@ func TestBatchCreateNode(t *testing.T) {
 
 // TestBatchCreateNodeNoKind verifies that creating a node without a kind returns an error.
 func TestBatchCreateNodeNoKind(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := openGraph(t)
 
@@ -114,6 +117,7 @@ func TestBatchCreateNodeNoKind(t *testing.T) {
 
 // TestBatchDeleteNode verifies that deleting a node via batch removes it.
 func TestBatchDeleteNode(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := openGraph(t)
 
@@ -132,6 +136,7 @@ func TestBatchDeleteNode(t *testing.T) {
 
 // TestBatchCreateRelationship verifies creating relationships via batch.
 func TestBatchCreateRelationship(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := openGraph(t)
 
@@ -164,6 +169,7 @@ func TestBatchCreateRelationship(t *testing.T) {
 
 // TestBatchCreateRelationshipByIDs verifies creating relationships with properties via batch.
 func TestBatchCreateRelationshipByIDs(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := openGraph(t)
 
@@ -180,6 +186,7 @@ func TestBatchCreateRelationshipByIDs(t *testing.T) {
 
 // TestBatchCreateRelationshipNilKind verifies error on nil kind.
 func TestBatchCreateRelationshipNilKind(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := openGraph(t)
 
@@ -191,6 +198,7 @@ func TestBatchCreateRelationshipNilKind(t *testing.T) {
 
 // TestBatchDeleteRelationship verifies that deleting a relationship via batch removes it.
 func TestBatchDeleteRelationship(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := openGraph(t)
 
@@ -222,6 +230,7 @@ func TestBatchDeleteRelationship(t *testing.T) {
 
 // TestBatchNodes verifies that Batch.Nodes() returns a working NodeQuery.
 func TestBatchNodes(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := openGraph(t)
 
@@ -243,6 +252,7 @@ func TestBatchNodes(t *testing.T) {
 
 // TestBatchRelationships verifies that Batch.Relationships() returns a working RelationshipQuery.
 func TestBatchRelationships(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := openGraph(t)
 
@@ -265,6 +275,7 @@ func TestBatchRelationships(t *testing.T) {
 
 // TestBatchWithGraph verifies that WithGraph returns the batch itself (passthrough).
 func TestBatchWithGraph(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := openGraph(t)
 
@@ -281,6 +292,7 @@ func TestBatchWithGraph(t *testing.T) {
 // TestBatchFlushThreshold verifies that the batch auto-flushes when the buffer exceeds flushSize.
 // We create more than defaultBatchFlushSize (2000) nodes to trigger auto-flush.
 func TestBatchFlushThreshold(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := openGraph(t)
 
@@ -306,6 +318,7 @@ func TestBatchFlushThreshold(t *testing.T) {
 // TestBatchEdgeFlushThreshold verifies that edge batching auto-flushes when the edge buffer
 // exceeds defaultEdgeFlushSize (5000).
 func TestBatchEdgeFlushThreshold(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := openGraph(t)
 
@@ -352,6 +365,7 @@ func TestBatchEdgeFlushThreshold(t *testing.T) {
 
 // TestBatchCreateNodeNilProperties verifies that creating a node with nil properties works.
 func TestBatchCreateNodeNilProperties(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := openGraph(t)
 
@@ -369,6 +383,7 @@ func TestBatchCreateNodeNilProperties(t *testing.T) {
 
 // TestBatchMultipleCommits verifies that multiple explicit commits within a single batch work.
 func TestBatchMultipleCommits(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := openGraph(t)
 
@@ -418,6 +433,7 @@ func TestBatchMultipleCommits(t *testing.T) {
 
 // TestBatchCreateRelationshipNilProperties verifies creating edges with nil properties.
 func TestBatchCreateRelationshipNilProperties(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := openGraph(t)
 
@@ -433,6 +449,7 @@ func TestBatchCreateRelationshipNilProperties(t *testing.T) {
 
 // TestBatchCreateRelationshipEmptyKind verifies error on empty kind string.
 func TestBatchCreateRelationshipEmptyKind(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := openGraph(t)
 
@@ -444,6 +461,7 @@ func TestBatchCreateRelationshipEmptyKind(t *testing.T) {
 
 // TestBatchUpdateRelationshipBy verifies upserting a relationship with start/end nodes.
 func TestBatchUpdateRelationshipBy(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := openGraph(t)
 
@@ -502,6 +520,7 @@ func TestBatchUpdateRelationshipBy(t *testing.T) {
 
 // TestBatchUpdateRelationshipByNilRelationship verifies error when relationship is nil.
 func TestBatchUpdateRelationshipByNilRelationship(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := openGraph(t)
 
@@ -513,6 +532,7 @@ func TestBatchUpdateRelationshipByNilRelationship(t *testing.T) {
 
 // TestBatchUpdateRelationshipByNilKind verifies error when relationship kind is nil.
 func TestBatchUpdateRelationshipByNilKind(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := openGraph(t)
 
@@ -528,6 +548,7 @@ func TestBatchUpdateRelationshipByNilKind(t *testing.T) {
 
 // TestBatchUpdateRelationshipByEmptyKind verifies error when relationship kind is empty string.
 func TestBatchUpdateRelationshipByEmptyKind(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := openGraph(t)
 
@@ -545,6 +566,7 @@ func TestBatchUpdateRelationshipByEmptyKind(t *testing.T) {
 // TestBatchUpdateRelationshipByNoIdentityKinds verifies UpdateRelationshipBy works
 // without start/end identity kinds (no label on MERGE).
 func TestBatchUpdateRelationshipByNoIdentityKinds(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := openGraph(t)
 
@@ -571,6 +593,7 @@ func TestBatchUpdateRelationshipByNoIdentityKinds(t *testing.T) {
 
 // TestBatchUpdateNodeByNilNode verifies error when node is nil.
 func TestBatchUpdateNodeByNilNode(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := openGraph(t)
 
@@ -583,6 +606,7 @@ func TestBatchUpdateNodeByNilNode(t *testing.T) {
 // TestBatchUpdateNodeByMultipleKinds verifies that UpdateNodeBy handles nodes
 // with multiple kinds correctly.
 func TestBatchUpdateNodeByMultipleKinds(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := openGraph(t)
 
@@ -607,6 +631,7 @@ func TestBatchUpdateNodeByMultipleKinds(t *testing.T) {
 // TestBatchUpdateNodeByNoIdentityKind verifies that UpdateNodeBy falls back to
 // the first node kind when IdentityKind is nil.
 func TestBatchUpdateNodeByNoIdentityKind(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := openGraph(t)
 
@@ -626,6 +651,7 @@ func TestBatchUpdateNodeByNoIdentityKind(t *testing.T) {
 
 // TestBatchUpdateNodeByNilProperties verifies UpdateNodeBy with nil properties.
 func TestBatchUpdateNodeByNilProperties(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := openGraph(t)
 
@@ -646,6 +672,7 @@ func TestBatchUpdateNodeByNilProperties(t *testing.T) {
 // TestBatchUpdateRelationshipByWithProperties verifies that UpdateRelationshipBy
 // correctly sets node properties on start and end nodes.
 func TestBatchUpdateRelationshipByWithProperties(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := openGraph(t)
 
@@ -685,6 +712,7 @@ func TestBatchUpdateRelationshipByWithProperties(t *testing.T) {
 
 // TestBatchUpdateRelationshipByNilRelProps verifies UpdateRelationshipBy with nil relationship properties.
 func TestBatchUpdateRelationshipByNilRelProps(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := openGraph(t)
 
@@ -712,6 +740,7 @@ func TestBatchUpdateRelationshipByNilRelProps(t *testing.T) {
 
 // TestBatchDuplicateEdgesDedup verifies that duplicate edges within a single batch are deduplicated.
 func TestBatchDuplicateEdgesDedup(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := openGraph(t)
 
@@ -735,6 +764,7 @@ func TestBatchDuplicateEdgesDedup(t *testing.T) {
 // TestBatchDuplicateEdgesAcrossFlushes verifies that edge deduplication works across
 // multiple flushes within a single batch operation.
 func TestBatchDuplicateEdgesAcrossFlushes(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := openGraph(t)
 

@@ -72,12 +72,14 @@ var azureAttackPathEdges = []edgeAssertion{
 
 // TestADAttackPathEdges verifies that AD post-processing creates the expected derived edges.
 func TestADAttackPathEdges(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := sharedADGraph(t)
 
 	for _, tc := range adAttackPathEdges {
 		tc := tc
 		t.Run(tc.Name, func(t *testing.T) {
+			t.Parallel()
 			got := runQueryInt64(ctx, t, db,
 				"MATCH ()-[r:"+tc.EdgeType+"]->() RETURN count(r) AS c")
 			require.Equal(t, tc.Expected, got, "edge type: %s", tc.EdgeType)
@@ -87,12 +89,14 @@ func TestADAttackPathEdges(t *testing.T) {
 
 // TestAzureAttackPathEdges verifies that Azure post-processing creates the expected derived edges.
 func TestAzureAttackPathEdges(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := sharedAzureGraph(t)
 
 	for _, tc := range azureAttackPathEdges {
 		tc := tc
 		t.Run(tc.Name, func(t *testing.T) {
+			t.Parallel()
 			got := runQueryInt64(ctx, t, db,
 				"MATCH ()-[r:"+tc.EdgeType+"]->() RETURN count(r) AS c")
 			require.Equal(t, tc.Expected, got, "edge type: %s", tc.EdgeType)

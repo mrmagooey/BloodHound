@@ -104,6 +104,7 @@ func decodeCompatResponse(t *testing.T, rr *httptest.ResponseRecorder) neo4jcomp
 // TestHTTPCompat_SingleStatement sends a single Cypher query via
 // POST /db/neo4j/tx/commit and verifies the happy-path response shape.
 func TestHTTPCompat_SingleStatement(t *testing.T) {
+	t.Parallel()
 	r := newCompatResource(t)
 
 	body := neo4jcompat.TransactionRequest{
@@ -122,6 +123,7 @@ func TestHTTPCompat_SingleStatement(t *testing.T) {
 
 // TestHTTPCompat_EmptyStatement sends an empty statement list (valid per Neo4j spec).
 func TestHTTPCompat_EmptyStatement(t *testing.T) {
+	t.Parallel()
 	r := newCompatResource(t)
 
 	body := neo4jcompat.TransactionRequest{Statements: []neo4jcompat.Statement{}}
@@ -137,6 +139,7 @@ func TestHTTPCompat_EmptyStatement(t *testing.T) {
 // TestHTTPCompat_MultipleStatements sends two statements in one request and
 // verifies both are executed and returned.
 func TestHTTPCompat_MultipleStatements(t *testing.T) {
+	t.Parallel()
 	r := newCompatResource(t)
 
 	body := neo4jcompat.TransactionRequest{
@@ -157,6 +160,7 @@ func TestHTTPCompat_MultipleStatements(t *testing.T) {
 // TestHTTPCompat_ResultStructure verifies that the result has the expected
 // columns / data / meta shape that Neo4j clients rely on.
 func TestHTTPCompat_ResultStructure(t *testing.T) {
+	t.Parallel()
 	r := newCompatResource(t)
 
 	body := neo4jcompat.TransactionRequest{
@@ -179,6 +183,7 @@ func TestHTTPCompat_ResultStructure(t *testing.T) {
 // TestHTTPCompat_SyntaxError verifies that an invalid Cypher query returns an
 // error in the response body (not an HTTP error status) per the Neo4j spec.
 func TestHTTPCompat_SyntaxError(t *testing.T) {
+	t.Parallel()
 	r := newCompatResource(t)
 
 	body := neo4jcompat.TransactionRequest{
@@ -199,6 +204,7 @@ func TestHTTPCompat_SyntaxError(t *testing.T) {
 // TestHTTPCompat_StopsOnFirstError verifies that execution stops after the
 // first failing statement.
 func TestHTTPCompat_StopsOnFirstError(t *testing.T) {
+	t.Parallel()
 	r := newCompatResource(t)
 
 	body := neo4jcompat.TransactionRequest{
@@ -222,6 +228,7 @@ func TestHTTPCompat_StopsOnFirstError(t *testing.T) {
 // TestHTTPCompat_NodeQuery seeds the graph, then runs a node-returning query
 // through the HTTP endpoint and checks the columns.
 func TestHTTPCompat_NodeQuery(t *testing.T) {
+	t.Parallel()
 	ctrl := gomock.NewController(t)
 	mockDB := dbmocks.NewMockDatabase(ctrl)
 	mockDB.EXPECT().
@@ -256,6 +263,7 @@ func TestHTTPCompat_NodeQuery(t *testing.T) {
 
 // TestHTTPCompat_CountQuery verifies that a count literal is returned correctly.
 func TestHTTPCompat_CountQuery(t *testing.T) {
+	t.Parallel()
 	ctrl := gomock.NewController(t)
 	mockDB := dbmocks.NewMockDatabase(ctrl)
 	mockDB.EXPECT().
@@ -290,6 +298,7 @@ func TestHTTPCompat_CountQuery(t *testing.T) {
 // TestHTTPCompat_ContentTypeHeader verifies that responses include the correct
 // Content-Type header.
 func TestHTTPCompat_ContentTypeHeader(t *testing.T) {
+	t.Parallel()
 	r := newCompatResource(t)
 
 	body := neo4jcompat.TransactionRequest{
@@ -308,6 +317,7 @@ func TestHTTPCompat_ContentTypeHeader(t *testing.T) {
 // TestHTTPCompat_TransactionBeginRunCommit exercises the full
 // BEGIN → RUN → COMMIT flow of the open-transaction API.
 func TestHTTPCompat_TransactionBeginRunCommit(t *testing.T) {
+	t.Parallel()
 	r := newCompatResource(t)
 	dbName := "neo4j"
 
@@ -355,6 +365,7 @@ func TestHTTPCompat_TransactionBeginRunCommit(t *testing.T) {
 // TestHTTPCompat_TransactionRollback exercises BEGIN → ROLLBACK and verifies
 // the transaction is gone afterwards.
 func TestHTTPCompat_TransactionRollback(t *testing.T) {
+	t.Parallel()
 	r := newCompatResource(t)
 	dbName := "neo4j"
 
@@ -391,6 +402,7 @@ func TestHTTPCompat_TransactionRollback(t *testing.T) {
 // TestHTTPCompat_CommitNotFound verifies that committing a non-existent txId
 // returns 404 with the expected error code.
 func TestHTTPCompat_CommitNotFound(t *testing.T) {
+	t.Parallel()
 	r := newCompatResource(t)
 
 	rr := compatPost(t, r.TransactionCommitOpen, "/db/neo4j/tx/99999/commit", nil,
@@ -404,6 +416,7 @@ func TestHTTPCompat_CommitNotFound(t *testing.T) {
 // TestHTTPCompat_RollbackNotFound verifies that rolling back a non-existent txId
 // returns 404.
 func TestHTTPCompat_RollbackNotFound(t *testing.T) {
+	t.Parallel()
 	r := newCompatResource(t)
 
 	rr := compatDelete(t, r.TransactionRollback, "/db/neo4j/tx/99999",
@@ -414,6 +427,7 @@ func TestHTTPCompat_RollbackNotFound(t *testing.T) {
 // TestHTTPCompat_RunNotFound verifies that running statements in a non-existent
 // transaction returns 404.
 func TestHTTPCompat_RunNotFound(t *testing.T) {
+	t.Parallel()
 	r := newCompatResource(t)
 
 	body := neo4jcompat.TransactionRequest{
@@ -426,6 +440,7 @@ func TestHTTPCompat_RunNotFound(t *testing.T) {
 
 // TestHTTPCompat_EmptyBody exercises the empty/nil-body path (valid for begin/rollback).
 func TestHTTPCompat_EmptyBody(t *testing.T) {
+	t.Parallel()
 	r := newCompatResource(t)
 
 	req := httptest.NewRequest(http.MethodPost, "/db/neo4j/tx/commit", nil)
@@ -444,6 +459,7 @@ func TestHTTPCompat_EmptyBody(t *testing.T) {
 // TestHTTPCompat_WhereFiltersExtended covers WHERE operators not tested in the
 // basic WhereFilters test: <>, AND, OR, ENDS WITH, CONTAINS.
 func TestHTTPCompat_WhereFiltersExtended(t *testing.T) {
+	t.Parallel()
 	ctrl := gomock.NewController(t)
 	mockDB := dbmocks.NewMockDatabase(ctrl)
 	mockDB.EXPECT().
@@ -474,18 +490,23 @@ func TestHTTPCompat_WhereFiltersExtended(t *testing.T) {
 	}
 
 	t.Run("not_equals", func(t *testing.T) {
+		t.Parallel()
 		runCount(t, "MATCH (n:CypherTest) WHERE n.name <> 'Alice' RETURN count(n) AS c", 2)
 	})
 	t.Run("AND", func(t *testing.T) {
+		t.Parallel()
 		runCount(t, "MATCH (n:CypherTest) WHERE n.enabled = true AND n.score > 100 RETURN count(n) AS c", 1)
 	})
 	t.Run("OR", func(t *testing.T) {
+		t.Parallel()
 		runCount(t, "MATCH (n:CypherTest) WHERE n.name = 'Alice' OR n.name = 'Bob' RETURN count(n) AS c", 2)
 	})
 	t.Run("ends_with", func(t *testing.T) {
+		t.Parallel()
 		runCount(t, "MATCH (n:CypherTest) WHERE n.objectid ENDS WITH '-3' RETURN count(n) AS c", 1)
 	})
 	t.Run("contains", func(t *testing.T) {
+		t.Parallel()
 		runCount(t, "MATCH (n:CypherTest) WHERE n.name CONTAINS 'ob' RETURN count(n) AS c", 1)
 	})
 }
@@ -493,6 +514,7 @@ func TestHTTPCompat_WhereFiltersExtended(t *testing.T) {
 // TestHTTPCompat_WithClause verifies that the WITH clause works as a pipeline
 // filter via the HTTP endpoint.
 func TestHTTPCompat_WithClause(t *testing.T) {
+	t.Parallel()
 	ctrl := gomock.NewController(t)
 	mockDB := dbmocks.NewMockDatabase(ctrl)
 	mockDB.EXPECT().
@@ -525,6 +547,7 @@ func TestHTTPCompat_WithClause(t *testing.T) {
 // TestHTTPCompat_OrderBy verifies that ORDER BY returns rows in the correct
 // lexicographic order via the HTTP endpoint.
 func TestHTTPCompat_OrderBy(t *testing.T) {
+	t.Parallel()
 	ctrl := gomock.NewController(t)
 	mockDB := dbmocks.NewMockDatabase(ctrl)
 	mockDB.EXPECT().
@@ -560,6 +583,7 @@ func TestHTTPCompat_OrderBy(t *testing.T) {
 // TestHTTPCompat_Distinct verifies that count(DISTINCT ...) returns the correct
 // number of unique values via the HTTP endpoint.
 func TestHTTPCompat_Distinct(t *testing.T) {
+	t.Parallel()
 	ctrl := gomock.NewController(t)
 	mockDB := dbmocks.NewMockDatabase(ctrl)
 	mockDB.EXPECT().
@@ -593,6 +617,7 @@ func TestHTTPCompat_Distinct(t *testing.T) {
 // TestHTTPCompat_CypherFunctions tests Cypher built-in functions (type, coalesce,
 // toLower, toUpper, labels) via the HTTP endpoint.
 func TestHTTPCompat_CypherFunctions(t *testing.T) {
+	t.Parallel()
 	ctrl := gomock.NewController(t)
 	mockDB := dbmocks.NewMockDatabase(ctrl)
 	mockDB.EXPECT().
@@ -620,6 +645,7 @@ func TestHTTPCompat_CypherFunctions(t *testing.T) {
 	}
 
 	t.Run("type", func(t *testing.T) {
+		t.Parallel()
 		resp := post(t, "MATCH ()-[r:CypherEdge]->() RETURN type(r) AS t LIMIT 1")
 		require.Len(t, resp.Results, 1)
 		require.NotEmpty(t, resp.Results[0].Data)
@@ -628,6 +654,7 @@ func TestHTTPCompat_CypherFunctions(t *testing.T) {
 	})
 
 	t.Run("coalesce", func(t *testing.T) {
+		t.Parallel()
 		resp := post(t, "MATCH (n:CypherTest) WHERE n.name = 'Alice' RETURN coalesce(n.name, 'unknown') AS name")
 		require.Len(t, resp.Results, 1)
 		require.NotEmpty(t, resp.Results[0].Data)
@@ -635,6 +662,7 @@ func TestHTTPCompat_CypherFunctions(t *testing.T) {
 	})
 
 	t.Run("toLower", func(t *testing.T) {
+		t.Parallel()
 		resp := post(t, "MATCH (n:CypherTest) WHERE n.name = 'Alice' RETURN toLower(n.name) AS l")
 		require.Len(t, resp.Results, 1)
 		require.NotEmpty(t, resp.Results[0].Data)
@@ -642,6 +670,7 @@ func TestHTTPCompat_CypherFunctions(t *testing.T) {
 	})
 
 	t.Run("toUpper", func(t *testing.T) {
+		t.Parallel()
 		resp := post(t, "MATCH (n:CypherTest) WHERE n.name = 'Alice' RETURN toUpper(n.name) AS u")
 		require.Len(t, resp.Results, 1)
 		require.NotEmpty(t, resp.Results[0].Data)
@@ -649,6 +678,7 @@ func TestHTTPCompat_CypherFunctions(t *testing.T) {
 	})
 
 	t.Run("labels", func(t *testing.T) {
+		t.Parallel()
 		resp := post(t, "MATCH (n:CypherTest) WHERE n.name = 'Alice' RETURN labels(n) AS l")
 		require.Len(t, resp.Results, 1)
 		require.NotEmpty(t, resp.Results[0].Data)
@@ -661,6 +691,7 @@ func TestHTTPCompat_CypherFunctions(t *testing.T) {
 // TestHTTPCompat_CaseExpression verifies the CASE WHEN … THEN … ELSE … END
 // expression via the HTTP endpoint.
 func TestHTTPCompat_CaseExpression(t *testing.T) {
+	t.Parallel()
 	ctrl := gomock.NewController(t)
 	mockDB := dbmocks.NewMockDatabase(ctrl)
 	mockDB.EXPECT().
@@ -695,6 +726,7 @@ func TestHTTPCompat_CaseExpression(t *testing.T) {
 // TestHTTPCompat_VariableLengthPaths tests Cypher variable-length path patterns
 // via the HTTP endpoint.
 func TestHTTPCompat_VariableLengthPaths(t *testing.T) {
+	t.Parallel()
 	ctrl := gomock.NewController(t)
 	mockDB := dbmocks.NewMockDatabase(ctrl)
 	mockDB.EXPECT().
@@ -724,12 +756,15 @@ func TestHTTPCompat_VariableLengthPaths(t *testing.T) {
 	}
 
 	t.Run("unbounded", func(t *testing.T) {
+		t.Parallel()
 		runCount(t, "MATCH (a:CypherTest)-[:CypherEdge*1..]->(x) WHERE a.name = 'Alice' RETURN count(x) AS c", 2)
 	})
 	t.Run("exact_length", func(t *testing.T) {
+		t.Parallel()
 		runCount(t, "MATCH (a:CypherTest)-[:CypherEdge*2]->(x) WHERE a.name = 'Alice' RETURN count(x) AS c", 1)
 	})
 	t.Run("bounded", func(t *testing.T) {
+		t.Parallel()
 		runCount(t, "MATCH (a:CypherTest)-[:CypherEdge*1..1]->(x) WHERE a.name = 'Alice' RETURN count(x) AS c", 1)
 	})
 }
@@ -737,6 +772,7 @@ func TestHTTPCompat_VariableLengthPaths(t *testing.T) {
 // TestHTTPCompat_PatternMatchWithRelationships verifies that a pattern with an
 // explicit relationship type returns the correct count via the HTTP endpoint.
 func TestHTTPCompat_PatternMatchWithRelationships(t *testing.T) {
+	t.Parallel()
 	ctrl := gomock.NewController(t)
 	mockDB := dbmocks.NewMockDatabase(ctrl)
 	mockDB.EXPECT().
@@ -769,6 +805,7 @@ func TestHTTPCompat_PatternMatchWithRelationships(t *testing.T) {
 // TestHTTPCompat_PipeSeparatedTypes verifies that pipe-separated relationship
 // types (e.g. :TypeA|TypeB) work via the HTTP endpoint.
 func TestHTTPCompat_PipeSeparatedTypes(t *testing.T) {
+	t.Parallel()
 	ctrl := gomock.NewController(t)
 	mockDB := dbmocks.NewMockDatabase(ctrl)
 	mockDB.EXPECT().
@@ -811,6 +848,7 @@ func TestHTTPCompat_PipeSeparatedTypes(t *testing.T) {
 // TestHTTPCompat_LabelCheckInWhere verifies the WHERE n:Label syntax
 // via the HTTP endpoint.
 func TestHTTPCompat_LabelCheckInWhere(t *testing.T) {
+	t.Parallel()
 	ctrl := gomock.NewController(t)
 	mockDB := dbmocks.NewMockDatabase(ctrl)
 	mockDB.EXPECT().
@@ -843,6 +881,7 @@ func TestHTTPCompat_LabelCheckInWhere(t *testing.T) {
 // TestHTTPCompat_PathQueries tests shortestPath, allShortestPaths, and bounded
 // variable-length path queries via the HTTP endpoint.
 func TestHTTPCompat_PathQueries(t *testing.T) {
+	t.Parallel()
 	ctrl := gomock.NewController(t)
 	mockDB := dbmocks.NewMockDatabase(ctrl)
 	mockDB.EXPECT().
@@ -871,6 +910,7 @@ func TestHTTPCompat_PathQueries(t *testing.T) {
 	}
 
 	t.Run("shortestPath", func(t *testing.T) {
+		t.Parallel()
 		cypher := fmt.Sprintf(
 			"MATCH p = shortestPath((a)-[*1..10]->(c)) WHERE id(a) = %d AND id(c) = %d RETURN p",
 			ids[0], ids[2])
@@ -880,6 +920,7 @@ func TestHTTPCompat_PathQueries(t *testing.T) {
 	})
 
 	t.Run("allShortestPaths", func(t *testing.T) {
+		t.Parallel()
 		cypher := fmt.Sprintf(
 			"MATCH p = allShortestPaths((a)-[*1..10]->(c)) WHERE id(a) = %d AND id(c) = %d RETURN p",
 			ids[0], ids[2])
@@ -889,6 +930,7 @@ func TestHTTPCompat_PathQueries(t *testing.T) {
 	})
 
 	t.Run("variable_length_bounded", func(t *testing.T) {
+		t.Parallel()
 		cypher := fmt.Sprintf(
 			"MATCH (a)-[:TestEdge*1..2]->(x) WHERE id(a) = %d RETURN count(x) AS c",
 			ids[0])
@@ -902,6 +944,7 @@ func TestHTTPCompat_PathQueries(t *testing.T) {
 // TestHTTPCompat_WhereFilters seeds the graph and sends various WHERE clause
 // queries through the HTTP endpoint to verify filter support.
 func TestHTTPCompat_WhereFilters(t *testing.T) {
+	t.Parallel()
 	ctrl := gomock.NewController(t)
 	mockDB := dbmocks.NewMockDatabase(ctrl)
 	mockDB.EXPECT().
@@ -927,7 +970,9 @@ func TestHTTPCompat_WhereFilters(t *testing.T) {
 	}
 
 	for _, q := range queries {
+		q := q
 		t.Run(q.name, func(t *testing.T) {
+			t.Parallel()
 			body := neo4jcompat.TransactionRequest{
 				Statements: []neo4jcompat.Statement{{Statement: q.cypher}},
 			}

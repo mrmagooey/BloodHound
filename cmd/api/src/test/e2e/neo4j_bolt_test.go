@@ -292,6 +292,7 @@ func (c *boltClient) pullAll() ([][]interface{}, map[string]interface{}) {
 
 // TestBolt_Handshake verifies that the Bolt server accepts the v4.4 handshake.
 func TestBolt_Handshake(t *testing.T) {
+	t.Parallel()
 	addr := boltTestServer(t)
 	// dialBolt performs the handshake internally and fails the test on mismatch.
 	_ = dialBolt(t, addr)
@@ -299,6 +300,7 @@ func TestBolt_Handshake(t *testing.T) {
 
 // TestBolt_Hello verifies HELLO → SUCCESS with server metadata.
 func TestBolt_Hello(t *testing.T) {
+	t.Parallel()
 	addr := boltTestServer(t)
 	c := dialBolt(t, addr)
 	c.hello()
@@ -306,6 +308,7 @@ func TestBolt_Hello(t *testing.T) {
 
 // TestBolt_SimpleQuery sends HELLO → RUN → PULL and verifies the protocol flow.
 func TestBolt_SimpleQuery(t *testing.T) {
+	t.Parallel()
 	addr := boltTestServer(t)
 	c := dialBolt(t, addr)
 	c.hello()
@@ -335,6 +338,7 @@ func TestBolt_SimpleQuery(t *testing.T) {
 // TestBolt_CountQueryReturnsRecord seeds the graph and verifies that a count
 // query returns at least one RECORD message with a numeric value.
 func TestBolt_CountQueryReturnsRecord(t *testing.T) {
+	t.Parallel()
 	ctrl := gomock.NewController(t)
 	mockDB := dbmocks.NewMockDatabase(ctrl)
 	mockDB.EXPECT().
@@ -397,6 +401,7 @@ func TestBolt_CountQueryReturnsRecord(t *testing.T) {
 // TestBolt_TransactionBeginRunCommit exercises the BEGIN → RUN → PULL → COMMIT
 // transaction flow via Bolt.
 func TestBolt_TransactionBeginRunCommit(t *testing.T) {
+	t.Parallel()
 	addr := boltTestServer(t)
 	c := dialBolt(t, addr)
 	c.hello()
@@ -430,6 +435,7 @@ func TestBolt_TransactionBeginRunCommit(t *testing.T) {
 
 // TestBolt_TransactionRollback exercises BEGIN → RUN → ROLLBACK.
 func TestBolt_TransactionRollback(t *testing.T) {
+	t.Parallel()
 	addr := boltTestServer(t)
 	c := dialBolt(t, addr)
 	c.hello()
@@ -466,6 +472,7 @@ func TestBolt_TransactionRollback(t *testing.T) {
 // TestBolt_Reset verifies that RESET returns the connection to READY state
 // from FAILED, allowing normal operation to resume.
 func TestBolt_Reset(t *testing.T) {
+	t.Parallel()
 	addr := boltTestServer(t)
 	c := dialBolt(t, addr)
 	c.hello()
@@ -496,6 +503,7 @@ func TestBolt_Reset(t *testing.T) {
 // TestBolt_IgnoredAfterFailure verifies that messages sent in FAILED state
 // return IGNORED until a RESET is issued.
 func TestBolt_IgnoredAfterFailure(t *testing.T) {
+	t.Parallel()
 	addr := boltTestServer(t)
 	c := dialBolt(t, addr)
 	c.hello()
@@ -525,6 +533,7 @@ func TestBolt_IgnoredAfterFailure(t *testing.T) {
 
 // TestBolt_Goodbye verifies that a GOODBYE message cleanly closes the connection.
 func TestBolt_Goodbye(t *testing.T) {
+	t.Parallel()
 	addr := boltTestServer(t)
 	c := dialBolt(t, addr)
 	c.hello()
@@ -542,6 +551,7 @@ func TestBolt_Goodbye(t *testing.T) {
 // TestBolt_MultipleQueries verifies that multiple RUN+PULL sequences can be
 // executed on the same connection without errors.
 func TestBolt_MultipleQueries(t *testing.T) {
+	t.Parallel()
 	addr := boltTestServer(t)
 	c := dialBolt(t, addr)
 	c.hello()
@@ -568,6 +578,7 @@ func TestBolt_MultipleQueries(t *testing.T) {
 // TestBolt_SeededNodeQuery seeds the graph with nodes and verifies that a
 // node-returning query streams back RECORD messages.
 func TestBolt_SeededNodeQuery(t *testing.T) {
+	t.Parallel()
 	ctrl := gomock.NewController(t)
 	mockDB := dbmocks.NewMockDatabase(ctrl)
 	mockDB.EXPECT().
@@ -752,6 +763,7 @@ func firstBoltRecordField(t *testing.T, c *boltClient, cypher string) interface{
 // TestBolt_WhereFiltersExtended tests WHERE operators not covered by the basic
 // WhereFilters test via the Bolt protocol.
 func TestBolt_WhereFiltersExtended(t *testing.T) {
+	t.Parallel()
 	addr, _, _, _ := boltSeededServer(t)
 
 	cases := []struct {
@@ -767,7 +779,9 @@ func TestBolt_WhereFiltersExtended(t *testing.T) {
 	}
 
 	for _, tc := range cases {
+		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			c := dialBolt(t, addr)
 			c.hello()
 			got := countBoltRecords(t, c, tc.cypher)
@@ -778,6 +792,7 @@ func TestBolt_WhereFiltersExtended(t *testing.T) {
 
 // TestBolt_WithClause verifies the WITH clause pipeline filter via Bolt.
 func TestBolt_WithClause(t *testing.T) {
+	t.Parallel()
 	addr, _, _, _ := boltSeededServer(t)
 	c := dialBolt(t, addr)
 	c.hello()
@@ -789,6 +804,7 @@ func TestBolt_WithClause(t *testing.T) {
 
 // TestBolt_OrderBy verifies that ORDER BY returns 3 ordered RECORD messages via Bolt.
 func TestBolt_OrderBy(t *testing.T) {
+	t.Parallel()
 	addr, _, _, _ := boltSeededServer(t)
 	c := dialBolt(t, addr)
 	c.hello()
@@ -800,6 +816,7 @@ func TestBolt_OrderBy(t *testing.T) {
 
 // TestBolt_Distinct verifies count(DISTINCT ...) via Bolt.
 func TestBolt_Distinct(t *testing.T) {
+	t.Parallel()
 	addr, _, _, _ := boltSeededServer(t)
 	c := dialBolt(t, addr)
 	c.hello()
@@ -811,9 +828,11 @@ func TestBolt_Distinct(t *testing.T) {
 
 // TestBolt_CypherFunctions tests Cypher built-in functions via the Bolt protocol.
 func TestBolt_CypherFunctions(t *testing.T) {
+	t.Parallel()
 	addr, _, _, _ := boltSeededServer(t)
 
 	t.Run("type", func(t *testing.T) {
+		t.Parallel()
 		c := dialBolt(t, addr)
 		c.hello()
 		val := firstBoltRecordField(t, c,
@@ -822,6 +841,7 @@ func TestBolt_CypherFunctions(t *testing.T) {
 	})
 
 	t.Run("coalesce", func(t *testing.T) {
+		t.Parallel()
 		c := dialBolt(t, addr)
 		c.hello()
 		val := firstBoltRecordField(t, c,
@@ -830,6 +850,7 @@ func TestBolt_CypherFunctions(t *testing.T) {
 	})
 
 	t.Run("toLower", func(t *testing.T) {
+		t.Parallel()
 		c := dialBolt(t, addr)
 		c.hello()
 		val := firstBoltRecordField(t, c,
@@ -838,6 +859,7 @@ func TestBolt_CypherFunctions(t *testing.T) {
 	})
 
 	t.Run("toUpper", func(t *testing.T) {
+		t.Parallel()
 		c := dialBolt(t, addr)
 		c.hello()
 		val := firstBoltRecordField(t, c,
@@ -846,6 +868,7 @@ func TestBolt_CypherFunctions(t *testing.T) {
 	})
 
 	t.Run("labels", func(t *testing.T) {
+		t.Parallel()
 		c := dialBolt(t, addr)
 		c.hello()
 		val := firstBoltRecordField(t, c,
@@ -857,6 +880,7 @@ func TestBolt_CypherFunctions(t *testing.T) {
 
 // TestBolt_CaseExpression verifies CASE WHEN ... THEN ... ELSE ... END via Bolt.
 func TestBolt_CaseExpression(t *testing.T) {
+	t.Parallel()
 	addr, _, _, _ := boltSeededServer(t)
 	c := dialBolt(t, addr)
 	c.hello()
@@ -868,9 +892,11 @@ func TestBolt_CaseExpression(t *testing.T) {
 
 // TestBolt_VariableLengthPaths tests variable-length path patterns via the Bolt protocol.
 func TestBolt_VariableLengthPaths(t *testing.T) {
+	t.Parallel()
 	addr, _, _, _ := boltSeededServer(t)
 
 	t.Run("unbounded", func(t *testing.T) {
+		t.Parallel()
 		c := dialBolt(t, addr)
 		c.hello()
 		// Alice->Bob->Charlie: Alice can reach 2 nodes (Bob and Charlie)
@@ -880,6 +906,7 @@ func TestBolt_VariableLengthPaths(t *testing.T) {
 	})
 
 	t.Run("exact_length", func(t *testing.T) {
+		t.Parallel()
 		c := dialBolt(t, addr)
 		c.hello()
 		records := countBoltRecords(t, c,
@@ -888,6 +915,7 @@ func TestBolt_VariableLengthPaths(t *testing.T) {
 	})
 
 	t.Run("bounded", func(t *testing.T) {
+		t.Parallel()
 		c := dialBolt(t, addr)
 		c.hello()
 		records := countBoltRecords(t, c,
@@ -899,6 +927,7 @@ func TestBolt_VariableLengthPaths(t *testing.T) {
 // TestBolt_PatternMatchWithRelationships verifies explicit relationship type
 // patterns return the correct count via the Bolt protocol.
 func TestBolt_PatternMatchWithRelationships(t *testing.T) {
+	t.Parallel()
 	addr, _, _, _ := boltSeededServer(t)
 	c := dialBolt(t, addr)
 	c.hello()
@@ -911,6 +940,7 @@ func TestBolt_PatternMatchWithRelationships(t *testing.T) {
 // TestBolt_PipeSeparatedTypes verifies pipe-separated relationship type syntax
 // via the Bolt protocol.
 func TestBolt_PipeSeparatedTypes(t *testing.T) {
+	t.Parallel()
 	ctrl := gomock.NewController(t)
 	mockDB := dbmocks.NewMockDatabase(ctrl)
 	mockDB.EXPECT().
@@ -954,6 +984,7 @@ func TestBolt_PipeSeparatedTypes(t *testing.T) {
 
 // TestBolt_LabelCheckInWhere verifies the WHERE n:Label syntax via Bolt.
 func TestBolt_LabelCheckInWhere(t *testing.T) {
+	t.Parallel()
 	addr, _, _, _ := boltSeededServer(t)
 	c := dialBolt(t, addr)
 	c.hello()
@@ -966,6 +997,7 @@ func TestBolt_LabelCheckInWhere(t *testing.T) {
 // TestBolt_PathQueries tests shortestPath, allShortestPaths, and bounded
 // variable-length paths via the Bolt protocol.
 func TestBolt_PathQueries(t *testing.T) {
+	t.Parallel()
 	ctrl := gomock.NewController(t)
 	mockDB := dbmocks.NewMockDatabase(ctrl)
 	mockDB.EXPECT().
@@ -990,6 +1022,7 @@ func TestBolt_PathQueries(t *testing.T) {
 	t.Cleanup(func() { cancel(); daemon.Stop(context.Background()) }) //nolint:errcheck
 
 	t.Run("shortestPath", func(t *testing.T) {
+		t.Parallel()
 		c := dialBolt(t, addr)
 		c.hello()
 		cypher := fmt.Sprintf(
@@ -1000,6 +1033,7 @@ func TestBolt_PathQueries(t *testing.T) {
 	})
 
 	t.Run("allShortestPaths", func(t *testing.T) {
+		t.Parallel()
 		c := dialBolt(t, addr)
 		c.hello()
 		cypher := fmt.Sprintf(
@@ -1010,6 +1044,7 @@ func TestBolt_PathQueries(t *testing.T) {
 	})
 
 	t.Run("variable_length_bounded", func(t *testing.T) {
+		t.Parallel()
 		c := dialBolt(t, addr)
 		c.hello()
 		cypher := fmt.Sprintf(

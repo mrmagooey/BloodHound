@@ -15,6 +15,7 @@ import (
 
 // TestDriverCoverageReadTransaction opens a graph, writes data, then uses ReadTransaction to count.
 func TestDriverCoverageReadTransaction(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := openGraph(t)
 
@@ -28,6 +29,7 @@ func TestDriverCoverageReadTransaction(t *testing.T) {
 
 // TestDriverCoverageWriteTransaction creates nodes via WriteTransaction and verifies they exist.
 func TestDriverCoverageWriteTransaction(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := openGraph(t)
 
@@ -53,6 +55,7 @@ func TestDriverCoverageWriteTransaction(t *testing.T) {
 
 // TestDriverCoverageCloseSave opens a graph with a file path, writes data, closes, and verifies the file exists.
 func TestDriverCoverageCloseSave(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	dir := t.TempDir()
 	graphPath := filepath.Join(dir, "close_test.kgl")
@@ -81,6 +84,7 @@ func TestDriverCoverageCloseSave(t *testing.T) {
 
 // TestDriverCoverageSetWriteFlushSize calls SetWriteFlushSize and verifies no panic.
 func TestDriverCoverageSetWriteFlushSize(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	graphPath := filepath.Join(dir, "flush_test.kgl")
 	db, err := kglitedawgs.Open(graphPath)
@@ -93,6 +97,7 @@ func TestDriverCoverageSetWriteFlushSize(t *testing.T) {
 
 // TestDriverCoverageSetBatchWriteSize calls SetBatchWriteSize and verifies no panic.
 func TestDriverCoverageSetBatchWriteSize(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	graphPath := filepath.Join(dir, "batch_size_test.kgl")
 	db, err := kglitedawgs.Open(graphPath)
@@ -105,6 +110,7 @@ func TestDriverCoverageSetBatchWriteSize(t *testing.T) {
 
 // TestDriverCoverageSetDefaultGraph calls SetDefaultGraph and verifies no error.
 func TestDriverCoverageSetDefaultGraph(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := openGraph(t)
 
@@ -116,6 +122,7 @@ func TestDriverCoverageSetDefaultGraph(t *testing.T) {
 
 // TestDriverCoverageAssertSchema calls AssertSchema with a schema and verifies no error.
 func TestDriverCoverageAssertSchema(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := openGraph(t)
 
@@ -134,6 +141,7 @@ func TestDriverCoverageAssertSchema(t *testing.T) {
 
 // TestDriverCoverageFetchKinds calls FetchKinds and verifies it returns without error.
 func TestDriverCoverageFetchKinds(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := openGraph(t)
 
@@ -148,6 +156,7 @@ func TestDriverCoverageFetchKinds(t *testing.T) {
 
 // TestDriverCoverageRefreshKinds calls RefreshKinds and verifies no error.
 func TestDriverCoverageRefreshKinds(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := openGraph(t)
 
@@ -161,6 +170,7 @@ func TestDriverCoverageRefreshKinds(t *testing.T) {
 
 // TestDriverCoverageRun executes a raw Cypher query via Run.
 func TestDriverCoverageRun(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := openGraph(t)
 
@@ -174,6 +184,7 @@ func TestDriverCoverageRun(t *testing.T) {
 
 // TestDriverCoverageExplicitSave calls Save explicitly (not via Close).
 func TestDriverCoverageExplicitSave(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	dir := t.TempDir()
 	graphPath := filepath.Join(dir, "save_test.kgl")
@@ -203,6 +214,7 @@ func TestDriverCoverageExplicitSave(t *testing.T) {
 
 // TestDriverCoverageSaveNoPath verifies Save is a no-op when no path is set.
 func TestDriverCoverageSaveNoPath(t *testing.T) {
+	t.Parallel()
 	drv, err := kglitedawgs.Open("")
 	require.NoError(t, err)
 	t.Cleanup(func() { drv.Close(context.Background()) })
@@ -213,6 +225,7 @@ func TestDriverCoverageSaveNoPath(t *testing.T) {
 
 // TestDriverCoverageCloseNilKg verifies Close is safe to call on an already-closed driver.
 func TestDriverCoverageCloseNilKg(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	dir := t.TempDir()
 	graphPath := filepath.Join(dir, "double_close.kgl")

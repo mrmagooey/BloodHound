@@ -91,6 +91,7 @@ var combinedExpectedCounts = map[string]int64{
 
 // TestADIngestAssertions uses the shared pre-loaded AD graph and asserts exact query results.
 func TestADIngestAssertions(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := sharedADGraph(t)
 
@@ -101,6 +102,7 @@ func TestADIngestAssertions(t *testing.T) {
 		}
 		q := q
 		t.Run(q.Name, func(t *testing.T) {
+		t.Parallel()
 			got := runQueryInt64(ctx, t, db, q.Cypher)
 			require.Equal(t, expected, got, "query: %s", q.Cypher)
 		})
@@ -109,6 +111,7 @@ func TestADIngestAssertions(t *testing.T) {
 
 // TestAzureIngestAssertions uses the shared pre-loaded Azure graph and asserts exact query results.
 func TestAzureIngestAssertions(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := sharedAzureGraph(t)
 
@@ -119,6 +122,7 @@ func TestAzureIngestAssertions(t *testing.T) {
 		}
 		q := q
 		t.Run(q.Name, func(t *testing.T) {
+		t.Parallel()
 			got := runQueryInt64(ctx, t, db, q.Cypher)
 			require.Equal(t, expected, got, "query: %s", q.Cypher)
 		})
@@ -127,6 +131,7 @@ func TestAzureIngestAssertions(t *testing.T) {
 
 // TestCombinedIngestAssertions uses the shared pre-loaded combined graph and asserts all query results.
 func TestCombinedIngestAssertions(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := sharedCombinedGraph(t)
 
@@ -138,6 +143,7 @@ func TestCombinedIngestAssertions(t *testing.T) {
 		}
 		q := q
 		t.Run(q.Name, func(t *testing.T) {
+		t.Parallel()
 			got := runQueryInt64(ctx, t, db, q.Cypher)
 			require.Equal(t, expected, got, "query: %s", q.Cypher)
 		})

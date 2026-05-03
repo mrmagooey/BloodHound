@@ -17,6 +17,7 @@ var altEdgeKind = graph.StringKind("AltEdge")
 
 // TestShortestPathBasic creates A->B->C and queries shortestPath(A->C).
 func TestShortestPathBasic(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := openGraph(t)
 	ids := createChain(ctx, t, db, testNodeKind, testEdgeKind, 3)
@@ -31,6 +32,7 @@ func TestShortestPathBasic(t *testing.T) {
 
 // TestShortestPathNoPath creates two disconnected nodes and verifies no path is found.
 func TestShortestPathNoPath(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := openGraph(t)
 	ids := createNodes(ctx, t, db, testNodeKind, 2) // disconnected
@@ -45,6 +47,7 @@ func TestShortestPathNoPath(t *testing.T) {
 
 // TestShortestPathMultiHop creates A->B->C->D->E and queries shortestPath(A->E).
 func TestShortestPathMultiHop(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := openGraph(t)
 	ids := createChain(ctx, t, db, testNodeKind, testEdgeKind, 5)
@@ -60,6 +63,7 @@ func TestShortestPathMultiHop(t *testing.T) {
 // TestShortestPathWithKindFilter creates two paths A->B->C (via TestEdge) and A->C (via AltEdge),
 // then queries with a kind filter to ensure only the filtered path is returned.
 func TestShortestPathWithKindFilter(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := openGraph(t)
 
@@ -93,6 +97,7 @@ func TestShortestPathWithKindFilter(t *testing.T) {
 
 // TestVariableLengthPathBounded creates a chain and tests bounded variable-length paths.
 func TestVariableLengthPathBounded(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := openGraph(t)
 	ids := createChain(ctx, t, db, testNodeKind, testEdgeKind, 5) // A->B->C->D->E
@@ -106,6 +111,7 @@ func TestVariableLengthPathBounded(t *testing.T) {
 
 // TestAllShortestPathsParsing verifies that allShortestPaths() syntax parses without error.
 func TestAllShortestPathsParsing(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := openGraph(t)
 	ids := createChain(ctx, t, db, testNodeKind, testEdgeKind, 3)

@@ -478,6 +478,7 @@ var azurePresetQueries = []presetQuery{
 
 // TestLoadAndQueryAD uses the shared pre-loaded AD graph and runs the AD preset queries.
 func TestLoadAndQueryAD(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := sharedADGraph(t)
 
@@ -492,6 +493,7 @@ func TestLoadAndQueryAD(t *testing.T) {
 
 // TestLoadAndQueryAzure uses the shared pre-loaded Azure graph and runs Azure preset queries.
 func TestLoadAndQueryAzure(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := sharedAzureGraph(t)
 
@@ -506,6 +508,7 @@ func TestLoadAndQueryAzure(t *testing.T) {
 
 // TestLoadAndQueryAll uses the shared pre-loaded combined AD+Azure graph and runs all preset queries.
 func TestLoadAndQueryAll(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	db := sharedCombinedGraph(t)
 
@@ -531,6 +534,7 @@ func runPresetQueries(ctx context.Context, t *testing.T, db graph.Database, quer
 	for _, q := range queries {
 		q := q
 		t.Run(q.Name, func(t *testing.T) {
+			t.Parallel()
 			result, dur, err := runQuery(ctx, db, q.Cypher)
 			stat := queryStat{
 				name:     q.Name,

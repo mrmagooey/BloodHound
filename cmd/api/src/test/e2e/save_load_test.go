@@ -39,6 +39,9 @@ var saveLoadEdgeKind = graph.StringKind("SaveLoadEdge")
 // All node and edge properties must survive the cycle, including properties
 // on nodes created via raw Cypher MERGE that have no registered column schema.
 func TestDriverSaveLoadRoundTrip(t *testing.T) {
+	// not parallel: the inner subtest reads db2, which is closed by the
+	// outer's defer; under -parallel scheduling the inner can be resumed
+	// after the outer's defers fire, causing a nil-receiver crash in kglite.
 	ctx := context.Background()
 	dir := t.TempDir()
 	graphPath := filepath.Join(dir, "roundtrip.kgl")
