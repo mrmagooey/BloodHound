@@ -288,11 +288,11 @@ var knexusPresetQueries = []presetQuery{
 	},
 	{
 		Name:   "SCIM_Provisioned start node labels",
-		Cypher: `MATCH (s)-[:SCIM_Provisioned]->() UNWIND labels(s) AS lbl RETURN lbl, count(*) AS c ORDER BY c DESC`,
+		Cypher: `MATCH (s)-[:SCIM_Provisioned]->() UNWIND labels(s) AS lbl RETURN lbl, count(*) AS c ORDER BY c DESC, lbl ASC`,
 	},
 	{
 		Name:   "SCIM_Provisioned end node labels",
-		Cypher: `MATCH ()-[:SCIM_Provisioned]->(e) UNWIND labels(e) AS lbl RETURN lbl, count(*) AS c ORDER BY c DESC`,
+		Cypher: `MATCH ()-[:SCIM_Provisioned]->(e) UNWIND labels(e) AS lbl RETURN lbl, count(*) AS c ORDER BY c DESC, lbl ASC`,
 	},
 
 	// SCIM stub nodes (nodes with only :SCIM label and no other platform label)

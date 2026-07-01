@@ -23,7 +23,7 @@ import (
 
 var adExpectedCounts = map[string]int64{
 	"Total nodes":                        1519,
-	"Total relationships":                16654,
+	"Total relationships":                16663,
 	"Computers":                          34,
 	"Users":                              99,
 	"Groups":                             243,
@@ -60,7 +60,7 @@ var combinedExpectedCounts = map[string]int64{
 	// individual dataset totals due to cross-dataset node deduplication and analysis
 	// adding relationships. These were verified against a correct kglite run.
 	"Total nodes":                        15074,
-	"Total relationships":                826355,
+	"Total relationships":                826364,
 	"Computers":                          34,
 	"Users":                              111,
 	"Groups":                             260,

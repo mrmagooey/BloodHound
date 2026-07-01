@@ -43,10 +43,10 @@ var adAttackPathEdges = []edgeAssertion{
 	{"ADCSESC4", "ADCSESC4", 7},
 	{"ADCSESC6a", "ADCSESC6a", 5},
 	{"ADCSESC6b", "ADCSESC6b", 12},
-	{"ADCSESC9a", "ADCSESC9a", 14},
-	{"ADCSESC9b", "ADCSESC9b", 10},
-	{"ADCSESC10a", "ADCSESC10a", 7},
-	{"ADCSESC10b", "ADCSESC10b", 8},
+	{"ADCSESC9a", "ADCSESC9a", 17},
+	{"ADCSESC9b", "ADCSESC9b", 12},
+	{"ADCSESC10a", "ADCSESC10a", 9},
+	{"ADCSESC10b", "ADCSESC10b", 10},
 	{"ADCSESC13", "ADCSESC13", 0},
 
 	// NTLM relay

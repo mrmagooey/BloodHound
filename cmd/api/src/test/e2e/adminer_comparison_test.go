@@ -176,6 +176,22 @@ var adminerADQueries = []presetQuery{
 		Name:   "ADMiner: Pre-Windows 2000 Compatible Access group",
 		Cypher: "MATCH (n:Group) WHERE n.name STARTS WITH 'PRE-WINDOWS 2000 COMPATIBLE ACCESS@' MATCH (m)-[r:MemberOf]->(n) WHERE NOT m.objectid ENDS WITH '-S-1-5-11' return m.domain, m.name, m.objectid, labels(m) as type",
 	},
+	{
+		Name:   "ADMiner: Domain Organisational Units",
+		Cypher: "MATCH (o:OU)-[:Contains]->(c) RETURN o.name AS OU, c.name AS name",
+	},
+	{
+		Name:   "ADMiner: Empty OUs",
+		Cypher: "MATCH (o:OU) WHERE NOT ()<-[:Contains]-(o) RETURN o.name AS `Empty Organizational Unit`, COALESCE(o.distinguishedname, '-') AS `Full Reference`",
+	},
+	{
+		Name:   "ADMiner: ACL anomalies on non-Group enabled objects",
+		Cypher: "MATCH (gg) WHERE NOT gg:Group AND ((gg:User AND gg.enabled) OR (gg:Computer AND gg.enabled) OR (NOT (gg:User OR gg:Computer))) WITH gg as g MATCH (g)-[r2{isacl:true}]->(n) WHERE ((g.is_da IS NULL OR g.is_da=FALSE) AND (g.is_dc IS NULL OR g.is_dc=FALSE) AND (NOT g.is_adcs OR g.is_adcs IS NULL)) OR (NOT n.domain CONTAINS '.' + g.domain AND n.domain <> g.domain) RETURN n.name,g.name,type(r2),LABELS(g),labels(n),ID(n)",
+	},
+	{
+		Name:   "ADMiner: PrimaryGroupID lower than 1000",
+		Cypher: "MATCH (n) WHERE (n:Group OR n:User) AND toInteger(split(n.objectid, '-')[-1]) < 1000 AND (n.enabled = true or n:Group) return toInteger(split(n.objectid, '-')[-1]) as sid, n.name, n.domain, n.is_da",
+	},
 }
 
 // adminerAzureQueries are read-only AD_Miner Cypher queries that target Azure node types.
@@ -231,6 +247,14 @@ var adminerAzureQueries = []presetQuery{
 	{
 		Name:   "ADMiner: Azure tenants",
 		Cypher: "MATCH (t:AZTenant) RETURN t.name AS Name, t.tenantid AS ID",
+	},
+	{
+		Name:   "ADMiner: AADConnect users",
+		Cypher: "MATCH (u) WHERE (u:User OR u:AZUser) AND (u.name =~ '(?i)^MSOL_|.*AADConnect.*' OR u.userprincipalname =~ '(?i)^sync_.*') OPTIONAL MATCH (u)-[:HasSession]->(s:Session) RETURN u.name AS Name, s AS Session, u.tenantid AS `Tenant ID`",
+	},
+	{
+		Name:   "ADMiner: Azure accounts not found on premise",
+		Cypher: "MATCH (azUser:AZUser{onpremisesyncenabled:true}) WHERE NOT EXISTS {MATCH (user:User) WHERE user.objectid = azUser.onpremisesecurityidentifier} RETURN azUser.name AS Name",
 	},
 }
 
